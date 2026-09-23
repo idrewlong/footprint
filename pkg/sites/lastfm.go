@@ -31,12 +31,14 @@ func (s *lastfm) Check(ctx context.Context, c *http.Client, email string) checke
 
 func (s *lastfm) result(status checker.Status, detail string, elapsed time.Duration) checker.Result {
 	return base{
-		name:        "lastfm",
-		domain:      "last.fm",
-		category:    "entertainment",
-		method:      "register",
-		deleteURL:   "https://www.last.fm/settings/account",
-		securityURL: "https://www.last.fm/settings/privacy",
+		name:          "lastfm",
+		domain:        "last.fm",
+		category:      "entertainment",
+		method:        "register",
+		deleteURL:     "https://www.last.fm/settings/account",
+		securityURL:   "https://www.last.fm/settings/privacy",
+		foundEvidence: "Signup validator said this email is already registered.",
+		missEvidence:  "Signup validator said this email is available.",
 	}.result(status, detail, elapsed)
 }
 

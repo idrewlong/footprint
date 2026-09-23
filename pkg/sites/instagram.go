@@ -32,12 +32,14 @@ func (s *instagram) Check(ctx context.Context, c *http.Client, email string) che
 
 func (s *instagram) result(status checker.Status, detail string, elapsed time.Duration) checker.Result {
 	return base{
-		name:        "instagram",
-		domain:      "instagram.com",
-		category:    "social",
-		method:      "register",
-		deleteURL:   "https://www.instagram.com/accounts/remove/request/permanent/",
-		securityURL: "https://accountscenter.instagram.com/password_and_security",
+		name:          "instagram",
+		domain:        "instagram.com",
+		category:      "social",
+		method:        "register",
+		deleteURL:     "https://www.instagram.com/accounts/remove/request/permanent/",
+		securityURL:   "https://accountscenter.instagram.com/password_and_security",
+		foundEvidence: "Signup endpoint said this email is already registered.",
+		missEvidence:  "Signup endpoint said this email is available.",
 	}.result(status, detail, elapsed)
 }
 

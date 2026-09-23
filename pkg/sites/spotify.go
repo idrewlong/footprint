@@ -31,12 +31,14 @@ func (s *spotify) Check(ctx context.Context, c *http.Client, email string) check
 
 func (s *spotify) result(status checker.Status, detail string, elapsed time.Duration) checker.Result {
 	return base{
-		name:        "spotify",
-		domain:      "spotify.com",
-		category:    "entertainment",
-		method:      "register",
-		deleteURL:   "https://www.spotify.com/account/privacy/",
-		securityURL: "https://www.spotify.com/account/profile/",
+		name:          "spotify",
+		domain:        "spotify.com",
+		category:      "entertainment",
+		method:        "register",
+		deleteURL:     "https://www.spotify.com/account/privacy/",
+		securityURL:   "https://www.spotify.com/account/profile/",
+		foundEvidence: "Signup validator said this email is already registered.",
+		missEvidence:  "Signup validator said this email is available.",
 	}.result(status, detail, elapsed)
 }
 

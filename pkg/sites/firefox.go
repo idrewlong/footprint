@@ -29,12 +29,14 @@ func (s *firefox) Check(ctx context.Context, c *http.Client, email string) check
 
 func (s *firefox) result(status checker.Status, detail string, elapsed time.Duration) checker.Result {
 	return base{
-		name:        "firefox",
-		domain:      "firefox.com",
-		category:    "productivity",
-		method:      "login",
-		deleteURL:   "https://accounts.firefox.com/settings/delete_account",
-		securityURL: "https://accounts.firefox.com/settings",
+		name:          "firefox",
+		domain:        "firefox.com",
+		category:      "productivity",
+		method:        "login",
+		deleteURL:     "https://accounts.firefox.com/settings/delete_account",
+		securityURL:   "https://accounts.firefox.com/settings",
+		foundEvidence: "Account-status endpoint said this email is already registered.",
+		missEvidence:  "Account-status endpoint said this email is not registered.",
 	}.result(status, detail, elapsed)
 }
 

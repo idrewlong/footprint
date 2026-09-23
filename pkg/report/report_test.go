@@ -13,7 +13,7 @@ import (
 func sample() []checker.Result {
 	return []checker.Result{
 		{Site: "spotify", Domain: "spotify.com", Category: "entertainment", Method: "register", Status: checker.StatusNotFound, Duration: 800 * time.Millisecond},
-		{Site: "adobe", Domain: "adobe.com", Category: "productivity", Method: "login", Status: checker.StatusFound, DeleteURL: "https://account.adobe.com/privacy", SecurityURL: "https://account.adobe.com/security", Duration: 1200 * time.Millisecond},
+		{Site: "adobe", Domain: "adobe.com", Category: "productivity", Method: "login", Status: checker.StatusFound, Evidence: "Sign-in lookup said this email is already registered.", DeleteURL: "https://account.adobe.com/privacy", SecurityURL: "https://account.adobe.com/security", Duration: 1200 * time.Millisecond},
 		{Site: "github", Domain: "github.com", Category: "dev", Method: "register", Status: checker.StatusRateLimited, Detail: "rate limited", Duration: 300 * time.Millisecond},
 		{Site: "slack", Domain: "slack.com", Category: "productivity", Method: "register", Status: checker.StatusError, Detail: "request failed", Duration: 50 * time.Millisecond},
 	}
@@ -52,18 +52,21 @@ func TestWriteJSON(t *testing.T) {
 	if !strings.Contains(buf.String(), "https://account.adobe.com/privacy") {
 		t.Fatal("delete url missing")
 	}
+	if !strings.Contains(buf.String(), `"evidence": "Sign-in lookup said this email is already registered."`) {
+		t.Fatal("evidence missing")
+	}
 }
 
 func TestWriteHuman(t *testing.T) {
 	results := append(sample(), checker.Result{
 		Site: "zoom", Domain: "zoom.us", Category: "productivity", Method: "register", Status: checker.StatusFound,
-		SecurityURL: "https://zoom.us/account", Duration: time.Second,
+		Evidence: "Signup endpoint said this email is already registered.", SecurityURL: "https://zoom.us/account", Duration: time.Second,
 	}, checker.Result{
 		Site: "xposedornot", Domain: "xposedornot.com", Category: "breach", Method: "breach", Status: checker.StatusFound,
-		Detail: "Adobe, LinkedIn", Duration: time.Second,
+		Evidence: "Breach list named Adobe and LinkedIn.", Detail: "Adobe, LinkedIn", Duration: time.Second,
 	}, checker.Result{
 		Site: "asciinema", Domain: "asciinema.org", Category: "dev", Method: "profile", Status: checker.StatusFound,
-		ProfileURL: "https://asciinema.org/me", Detail: "Octo Cat", Duration: time.Second,
+		Evidence: "Public profile exists for this username.", ProfileURL: "https://asciinema.org/me", Detail: "Octo Cat", Duration: time.Second,
 	})
 	doc := Build("me@example.com", results, false)
 	var buf bytes.Buffer
@@ -74,8 +77,8 @@ func TestWriteHuman(t *testing.T) {
 	if strings.Contains(text, "\033[") {
 		t.Fatal("color leaked")
 	}
-	if strings.Contains(text, "SITE") || strings.Contains(text, "login") || strings.Contains(text, "register") {
-		t.Fatalf("human report included machine columns:\n%s", text)
+	if strings.Contains(text, "SITE") || strings.Contains(text, "METHOD") {
+		t.Fatalf("human report included a column header:\n%s", text)
 	}
 	if strings.Contains(text, "Adobe, LinkedIn") {
 		t.Fatal("breach names stayed on one line")
@@ -94,6 +97,10 @@ func TestWriteHuman(t *testing.T) {
 		"adobe",
 		"productivity",
 		"https://account.adobe.com/privacy",
+		"login · Sign-in lookup said this email is already registered.",
+		"register · Signup endpoint said this email is already registered.",
+		"breach · Breach list named Adobe and LinkedIn.",
+		"profile · Public profile exists for this username.",
 		"https://zoom.us/account",
 		"Adobe",
 		"LinkedIn",
@@ -133,6 +140,7 @@ func TestWriteHumanColor(t *testing.T) {
 		"\033[1;32mfound\033[0m",
 		"\033[1;32m●\033[0m",
 		"\033[1madobe\033[0m",
+		"\033[1mlogin\033[0m · \033[2mSign-in lookup said this email is already registered.\033[0m",
 		"\033[4;36mhttps://account.adobe.com/privacy\033[0m",
 		"\033[1;33mcouldn't check\033[0m",
 		"\033[1;33mrate limited\033[0m",
@@ -175,21 +183,91 @@ func TestWriteHumanEmpty(t *testing.T) {
 }
 
 func TestWriteMarkdown(t *testing.T) {
-	doc := Build("me@example.com", sample(), false)
+	results := []checker.Result{
+		{Site: "spotify", Domain: "spotify.com", Category: "entertainment", Method: "register", Status: checker.StatusNotFound, Evidence: "Signup validator said this email is available."},
+		{Site: "adobe", Domain: "adobe.com", Category: "productivity", Method: "login", Status: checker.StatusFound, Evidence: "Sign-in lookup said this email is already registered.", DeleteURL: "https://account.adobe.com/privacy", SecurityURL: "https://account.adobe.com/security"},
+		{Site: "zoom", Domain: "zoom.us", Category: "productivity", Method: "register", Status: checker.StatusFound, Evidence: "Signup endpoint said this email is already registered.", DeleteURL: "https://zoom.us/account/delete", SecurityURL: "https://zoom.us/account"},
+		{Site: "xposedornot", Domain: "xposedornot.com", Category: "security", Method: "breach", Status: checker.StatusFound, Evidence: "Breach list named Zoom and LinkedIn.", Detail: "Zoom, LinkedIn"},
+		{Site: "github", Domain: "github.com", Category: "dev", Method: "profile", Status: checker.StatusFound, Evidence: "Public profile exists for this username.", ProfileURL: "https://github.com/me"},
+		{Site: "slack", Domain: "slack.com", Category: "productivity", Method: "register", Status: checker.StatusRateLimited, Detail: "rate limited"},
+		{Site: "discord", Domain: "discord.com", Category: "social", Method: "register", Status: checker.StatusError, Detail: "request failed"},
+	}
+	doc := Build("me@example.com", results, false)
+	doc.Username = "me"
 	var md bytes.Buffer
-	if err := WriteMarkdown(&md, doc, 2*time.Second); err != nil {
+	meta := Meta{Version: "v0.1.0", RanAt: time.Date(2026, 9, 23, 18, 32, 0, 0, time.UTC), Elapsed: 2 * time.Second}
+	if err := WriteMarkdown(&md, doc, meta); err != nil {
 		t.Fatal(err)
 	}
 	out := md.String()
-	if !strings.Contains(out, "https://account.adobe.com/security") {
-		t.Fatal("markdown missing security link")
-	}
-	for _, section := range []string{"## Not found", "spotify", "## Rate limited", "github", "## Error", "slack"} {
-		if !strings.Contains(out, section) {
-			t.Fatalf("markdown missing %s:\n%s", section, out)
+	for _, want := range []string{
+		"**Bottom line:** 2 email matches and 1 breach for `me@example.com`, and 1 public profile for `me` (weaker than an email match; the username was taken from the mailbox). 2 checks were not completed.",
+		"## Findings",
+		"| Site | Method | Evidence |",
+		"| adobe | login | Sign-in lookup said this email is already registered. |",
+		"| zoom | register | Signup endpoint said this email is already registered. |",
+		"| xposedornot | breach | Breach list named Zoom and LinkedIn. |",
+		"| github | profile | Public profile exists for this username. Weaker than an email match: the username was taken from the mailbox. https://github.com/me |",
+		"## Coverage",
+		"4 found, 1 not found, 1 rate limited, 1 error.",
+		"footprint v0.1.0 · 2026-09-23 18:32 UTC · 2.0s",
+		"Unchecked:",
+		"- **slack** — rate limited",
+		"- **discord** — error. request failed",
+		"## Actions",
+		"- **zoom** — Change the password and turn on 2FA. This address appears in the Zoom breach.",
+		"  - Security: https://zoom.us/account",
+		"  - Delete: https://zoom.us/account/delete",
+		"- **adobe**",
+		"  - Security: https://account.adobe.com/security",
+		"  - Delete: https://account.adobe.com/privacy",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q:\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, "### spotify") {
-		t.Fatal("markdown listed a miss as a found account")
+	if strings.Contains(out, "spotify") {
+		t.Fatalf("markdown listed a miss:\n%s", out)
+	}
+	adobe := strings.Index(out, "| adobe |")
+	zoom := strings.Index(out, "| zoom |")
+	breach := strings.Index(out, "| xposedornot |")
+	profile := strings.Index(out, "| github |")
+	if adobe < 0 || zoom < adobe || breach < zoom || profile < breach {
+		t.Fatalf("findings out of strength order:\n%s", out)
+	}
+	zoomAction := strings.Index(out, "- **zoom**")
+	adobeAction := strings.Index(out, "- **adobe**")
+	if zoomAction < 0 || adobeAction < zoomAction {
+		t.Fatalf("breach match was not first:\n%s", out)
+	}
+	if strings.Contains(out[adobeAction:], "Change the password") {
+		t.Fatalf("unrelated account got the breach note:\n%s", out)
+	}
+	if strings.Contains(out, "secret") || strings.Contains(out, "password:") {
+		t.Fatalf("markdown included a stolen value:\n%s", out)
+	}
+}
+
+func TestWriteMarkdownUsernameOnly(t *testing.T) {
+	doc := BuildUser("octocat", []checker.Result{
+		{Site: "github", Method: "profile", Status: checker.StatusFound, Evidence: "Public profile exists for this username.", ProfileURL: "https://github.com/octocat"},
+	}, false)
+	var md bytes.Buffer
+	if err := WriteMarkdown(&md, doc, Meta{Version: "dev", Elapsed: time.Second}); err != nil {
+		t.Fatal(err)
+	}
+	out := md.String()
+	if !strings.Contains(out, "**Bottom line:** 1 public profile for `octocat`.") {
+		t.Fatalf("bottom line:\n%s", out)
+	}
+	if !strings.Contains(out, "| github | profile | Public profile exists for this username. https://github.com/octocat |") {
+		t.Fatalf("profile finding:\n%s", out)
+	}
+	if strings.Contains(out, "weaker than an email match") {
+		t.Fatalf("explicit username was labeled as a mailbox guess:\n%s", out)
+	}
+	if !strings.Contains(out, "Unchecked:\n\nNone.") {
+		t.Fatalf("unchecked:\n%s", out)
 	}
 }

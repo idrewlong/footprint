@@ -29,12 +29,14 @@ func (s *adobe) Check(ctx context.Context, c *http.Client, email string) checker
 
 func (s *adobe) result(status checker.Status, detail string, elapsed time.Duration) checker.Result {
 	return base{
-		name:        "adobe",
-		domain:      "adobe.com",
-		category:    "productivity",
-		method:      "login",
-		deleteURL:   "https://account.adobe.com/privacy",
-		securityURL: "https://account.adobe.com/security",
+		name:          "adobe",
+		domain:        "adobe.com",
+		category:      "productivity",
+		method:        "login",
+		deleteURL:     "https://account.adobe.com/privacy",
+		securityURL:   "https://account.adobe.com/security",
+		foundEvidence: "Sign-in lookup said this email is already registered.",
+		missEvidence:  "Sign-in lookup returned no account for this email.",
 	}.result(status, detail, elapsed)
 }
 

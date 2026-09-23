@@ -30,12 +30,14 @@ func (s *duolingo) Check(ctx context.Context, c *http.Client, email string) chec
 
 func (s *duolingo) result(status checker.Status, detail string, elapsed time.Duration) checker.Result {
 	return base{
-		name:        "duolingo",
-		domain:      "duolingo.com",
-		category:    "education",
-		method:      "register",
-		deleteURL:   "https://www.duolingo.com/settings/account",
-		securityURL: "https://www.duolingo.com/settings/account",
+		name:          "duolingo",
+		domain:        "duolingo.com",
+		category:      "education",
+		method:        "register",
+		deleteURL:     "https://www.duolingo.com/settings/account",
+		securityURL:   "https://www.duolingo.com/settings/account",
+		foundEvidence: "Signup lookup said this email is already registered.",
+		missEvidence:  "Signup lookup returned no user for this email.",
 	}.result(status, detail, elapsed)
 }
 

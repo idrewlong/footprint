@@ -1,0 +1,4 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"success":false,"error_message":"Password has previously appeared in a data breach as per haveibeenpwned.com and should never be used. Please choose something harder to guess."}

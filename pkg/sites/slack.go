@@ -30,12 +30,14 @@ func (s *slack) Check(ctx context.Context, c *http.Client, email string) checker
 
 func (s *slack) result(status checker.Status, detail string, elapsed time.Duration) checker.Result {
 	return base{
-		name:        "slack",
-		domain:      "slack.com",
-		category:    "productivity",
-		method:      "register",
-		deleteURL:   "https://slack.com/account/settings",
-		securityURL: "https://slack.com/account/settings",
+		name:          "slack",
+		domain:        "slack.com",
+		category:      "productivity",
+		method:        "register",
+		deleteURL:     "https://slack.com/account/settings",
+		securityURL:   "https://slack.com/account/settings",
+		foundEvidence: "Signup check said this email is already registered.",
+		missEvidence:  "Signup check said this email is not registered.",
 	}.result(status, detail, elapsed)
 }
 

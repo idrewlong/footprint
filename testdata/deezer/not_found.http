@@ -1,0 +1,9 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"error":[],"results":{"USER_ID":0,"checkForm":"tok123"}}
+---
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"error":[],"results":{"availability":true,"suggestion":"","domain_validity":true,"domain":"example.com"}}

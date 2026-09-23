@@ -15,9 +15,12 @@ import (
 )
 
 // base is the metadata shared by every site file.
+// foundEvidence and missEvidence are the sentences for the signal this
+// check actually used. Breach checks fill Evidence from the names instead.
 type base struct {
 	name, domain, category, method string
 	deleteURL, securityURL         string
+	foundEvidence, missEvidence    string
 }
 
 func (b base) Name() string     { return b.name }
@@ -35,11 +38,48 @@ func (b base) result(status checker.Status, detail string, elapsed time.Duration
 		Detail:   detail,
 		Duration: elapsed,
 	}
-	if status == checker.StatusFound {
+	switch status {
+	case checker.StatusFound:
 		res.DeleteURL = b.deleteURL
 		res.SecurityURL = b.securityURL
+		res.Evidence = b.foundEvidence
+		if b.method == "breach" {
+			res.Evidence = breachEvidence(detail)
+		}
+	case checker.StatusNotFound:
+		res.Evidence = b.missEvidence
+		if b.method == "breach" {
+			res.Evidence = "Breach list did not name this email."
+		}
 	}
 	return res
+}
+
+// breachEvidence names the breaches the check listed. It does not include
+// passwords, hashes, or other stolen values.
+func breachEvidence(detail string) string {
+	var names []string
+	for _, name := range strings.Split(detail, ",") {
+		name = strings.TrimSpace(name)
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	switch len(names) {
+	case 0:
+		return "Breach list named this email."
+	case 1:
+		return "Breach list named " + names[0] + "."
+	default:
+		return "Breach list named " + humanList(names) + "."
+	}
+}
+
+func humanList(names []string) string {
+	if len(names) == 2 {
+		return names[0] + " and " + names[1]
+	}
+	return strings.Join(names[:len(names)-1], ", ") + ", and " + names[len(names)-1]
 }
 
 func do(ctx context.Context, c *http.Client, req *http.Request) (int, http.Header, []byte, error) {

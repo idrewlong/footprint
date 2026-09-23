@@ -185,6 +185,12 @@ func testProfile(t *testing.T, name string) {
 			if res.Method != "profile" || res.Site != name {
 				t.Fatalf("metadata %+v", res)
 			}
+			if (tc.want == checker.StatusFound || tc.want == checker.StatusNotFound) && strings.TrimSpace(res.Evidence) == "" {
+				t.Fatal("decisive result missing evidence")
+			}
+			if tc.want == checker.StatusRateLimited && res.Evidence != "" {
+				t.Fatalf("rate limited included evidence %q", res.Evidence)
+			}
 		})
 	}
 }

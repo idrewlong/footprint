@@ -76,6 +76,9 @@ func TestHIBPListsNamesOnly(t *testing.T) {
 	if strings.Contains(res.Detail, "secret-value") || strings.Contains(res.Detail, "Passwords") {
 		t.Fatalf("breach model leaked into detail %q", res.Detail)
 	}
+	if res.Evidence != "Breach list named Adobe." || strings.Contains(res.Evidence, "Passwords") || strings.Contains(res.Evidence, "secret-value") {
+		t.Fatalf("evidence %q", res.Evidence)
+	}
 }
 
 func TestLeakCheckOmitsSecrets(t *testing.T) {
@@ -85,6 +88,9 @@ func TestLeakCheckOmitsSecrets(t *testing.T) {
 	}
 	if strings.Contains(res.Detail, "secret-value") || strings.Contains(res.Detail, "password") {
 		t.Fatalf("secret leaked into detail %q", res.Detail)
+	}
+	if res.Evidence != "Breach list named Adobe." || strings.Contains(strings.ToLower(res.Evidence), "password") || strings.Contains(res.Evidence, "secret-value") {
+		t.Fatalf("evidence %q", res.Evidence)
 	}
 }
 
@@ -105,6 +111,9 @@ func TestXposedOrNotOmitsSecrets(t *testing.T) {
 	}
 	if strings.Contains(res.Detail, "secret-value") || strings.Contains(res.Detail, "abc") {
 		t.Fatalf("secret leaked into detail %q", res.Detail)
+	}
+	if res.Evidence != "Breach list named Adobe and LinkedIn." || strings.Contains(res.Evidence, "secret-value") || strings.Contains(res.Evidence, "abc") {
+		t.Fatalf("evidence %q", res.Evidence)
 	}
 }
 
@@ -161,6 +170,12 @@ func testSite(t *testing.T, name string) {
 			}
 			if res.Site != name || res.Domain == "" || res.Method == "" {
 				t.Fatalf("metadata %+v", res)
+			}
+			if (tc.want == checker.StatusFound || tc.want == checker.StatusNotFound) && strings.TrimSpace(res.Evidence) == "" {
+				t.Fatal("decisive result missing evidence")
+			}
+			if tc.want == checker.StatusRateLimited && res.Evidence != "" {
+				t.Fatalf("rate limited included evidence %q", res.Evidence)
 			}
 		})
 	}

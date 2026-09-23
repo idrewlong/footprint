@@ -1,0 +1,9 @@
+HTTP/1.1 200 OK
+Content-Type: text/html
+
+<html><script>var Site={"auth_token":"sessionless:1:/__api/::fixture-token"};</script></html>
+---
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"result":{"status":"ok"},"jsonrpc":"2.0","id":1}

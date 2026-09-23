@@ -30,12 +30,14 @@ func (s *dropbox) Check(ctx context.Context, c *http.Client, email string) check
 
 func (s *dropbox) result(status checker.Status, detail string, elapsed time.Duration) checker.Result {
 	return base{
-		name:        "dropbox",
-		domain:      "dropbox.com",
-		category:    "productivity",
-		method:      "register",
-		deleteURL:   "https://www.dropbox.com/account/delete",
-		securityURL: "https://www.dropbox.com/account/security",
+		name:          "dropbox",
+		domain:        "dropbox.com",
+		category:      "productivity",
+		method:        "register",
+		deleteURL:     "https://www.dropbox.com/account/delete",
+		securityURL:   "https://www.dropbox.com/account/security",
+		foundEvidence: "Signup check said this email is already registered.",
+		missEvidence:  "Signup check said this email is not registered.",
 	}.result(status, detail, elapsed)
 }
 

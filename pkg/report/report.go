@@ -115,6 +115,7 @@ func WriteHuman(w io.Writer, doc Document, elapsed time.Duration, color bool) er
 	bySite(limited)
 	bySite(failed)
 	problems := append(append([]checker.Result{}, limited...), failed...)
+	fromMailbox := usernameFromMailbox(doc.Email, doc.Username)
 
 	var b strings.Builder
 	b.WriteString(headerLine(query, elapsed, color))
@@ -128,7 +129,7 @@ func WriteHuman(w io.Writer, doc Document, elapsed time.Duration, color bool) er
 	} else {
 		b.WriteByte('\n')
 		writeRule(&b, "found", "1;32", color)
-		writeFoundBlocks(&b, found, color)
+		writeFoundBlocks(&b, found, color, fromMailbox)
 	}
 	if len(problems) > 0 {
 		b.WriteByte('\n')
@@ -176,7 +177,7 @@ func writeRule(b *strings.Builder, title, code string, color bool) {
 	b.WriteByte('\n')
 }
 
-func writeFoundBlocks(b *strings.Builder, rows []checker.Result, color bool) {
+func writeFoundBlocks(b *strings.Builder, rows []checker.Result, color bool, fromMailbox bool) {
 	siteW := 0
 	for _, res := range rows {
 		if n := len(res.Site); n > siteW {
@@ -196,6 +197,9 @@ func writeFoundBlocks(b *strings.Builder, rows []checker.Result, color bool) {
 			category = colorize("2", res.Category)
 		}
 		fmt.Fprintf(b, "  %s  %s  %s\n", bullet, name, category)
+		if line := methodEvidence(res, fromMailbox, color); line != "" {
+			fmt.Fprintf(b, "     %s\n", line)
+		}
 		for _, line := range actionLines(res) {
 			text := line.text
 			if color && line.code != "" {
@@ -204,6 +208,46 @@ func writeFoundBlocks(b *strings.Builder, rows []checker.Result, color bool) {
 			fmt.Fprintf(b, "     %s\n", text)
 		}
 	}
+}
+
+func methodEvidence(res checker.Result, fromMailbox, color bool) string {
+	sentence := evidenceSentence(res, fromMailbox)
+	if res.Method == "" && sentence == "" {
+		return ""
+	}
+	method := res.Method
+	if color && method != "" {
+		method = colorize("1", res.Method)
+	}
+	if sentence == "" {
+		return method
+	}
+	if color {
+		sentence = colorize("2", sentence)
+	}
+	if method == "" {
+		return sentence
+	}
+	return method + " · " + sentence
+}
+
+func evidenceSentence(res checker.Result, fromMailbox bool) string {
+	sentence := strings.TrimSpace(res.Evidence)
+	if sentence == "" || res.Method != "profile" || !fromMailbox {
+		return sentence
+	}
+	if !strings.HasSuffix(sentence, ".") {
+		sentence += "."
+	}
+	return sentence + " Weaker than an email match: the username was taken from the mailbox."
+}
+
+func usernameFromMailbox(email, username string) bool {
+	local, _, ok := strings.Cut(strings.TrimSpace(email), "@")
+	if !ok || strings.TrimSpace(username) == "" {
+		return false
+	}
+	return strings.EqualFold(local, strings.TrimSpace(username))
 }
 
 func actionLines(res checker.Result) []segment {
@@ -303,38 +347,86 @@ func WriteJSON(w io.Writer, doc Document) error {
 	return err
 }
 
-// WriteMarkdown writes every status in the document. Found accounts keep
-// their delete and security links. Other statuses are listed by name.
-func WriteMarkdown(w io.Writer, doc Document, elapsed time.Duration) error {
-	var b strings.Builder
-	fmt.Fprintf(&b, "# Footprint\n\n")
-	if doc.Email != "" {
-		fmt.Fprintf(&b, "Email: `%s`\n\n", strings.ReplaceAll(doc.Email, "`", "'"))
-	}
-	if doc.Username != "" {
-		fmt.Fprintf(&b, "Username: `%s`\n\n", strings.ReplaceAll(doc.Username, "`", "'"))
-	}
-	fmt.Fprintf(&b, "| Status | Count |\n| --- | --- |\n")
-	fmt.Fprintf(&b, "| Found | %d |\n", doc.Summary.Found)
-	fmt.Fprintf(&b, "| Not found | %d |\n", doc.Summary.NotFound)
-	fmt.Fprintf(&b, "| Rate limited | %d |\n", doc.Summary.RateLimited)
-	fmt.Fprintf(&b, "| Error | %d |\n\n", doc.Summary.Error)
-	fmt.Fprintf(&b, "Checked in %s.\n\n", formatDuration(elapsed))
+// Meta is the run stamp printed in the markdown case note.
+type Meta struct {
+	Version string
+	RanAt   time.Time
+	Elapsed time.Duration
+}
 
-	var found, notFound, limited, failed []checker.Result
+// WriteMarkdown writes a one-page case note: a bottom line, findings
+// strongest first, coverage, and actions. Rate-limited and error rows
+// stay listed as unchecked. Misses stay in the counts.
+func WriteMarkdown(w io.Writer, doc Document, meta Meta) error {
+	var b strings.Builder
+	b.WriteString("# Footprint\n\n")
+	fmt.Fprintf(&b, "**Bottom line:** %s\n\n", bottomLine(doc))
+	writeFindings(&b, doc)
+	writeCoverage(&b, doc, meta)
+	writeActions(&b, doc)
+	_, err := io.WriteString(w, b.String())
+	return err
+}
+
+func bottomLine(doc Document) string {
+	var emailHits, breaches, profiles int
 	for _, res := range doc.Results {
-		switch res.Status {
-		case checker.StatusFound:
-			found = append(found, res)
-		case checker.StatusNotFound:
-			notFound = append(notFound, res)
-		case checker.StatusRateLimited:
-			limited = append(limited, res)
+		if res.Status != checker.StatusFound {
+			continue
+		}
+		switch res.Method {
+		case "breach":
+			breaches++
+		case "profile":
+			profiles++
 		default:
-			failed = append(failed, res)
+			emailHits++
 		}
 	}
-	b.WriteString("## Found\n\n")
+	unchecked := doc.Summary.RateLimited + doc.Summary.Error
+	fromMailbox := usernameFromMailbox(doc.Email, doc.Username)
+	var parts []string
+	if doc.Email != "" {
+		lead := []string{}
+		if emailHits == 0 && breaches == 0 {
+			lead = append(lead, "No email matches")
+		} else {
+			if emailHits > 0 {
+				lead = append(lead, countPhrase(emailHits, "email match", "email matches"))
+			}
+			if breaches > 0 {
+				lead = append(lead, countPhrase(breaches, "breach", "breaches"))
+			}
+		}
+		parts = append(parts, strings.Join(lead, " and ")+" for "+codeSpan(doc.Email))
+	}
+	if doc.Username != "" && (doc.Email == "" || profiles > 0) {
+		phrase := countPhrase(profiles, "public profile", "public profiles")
+		if doc.Email == "" && profiles == 0 {
+			phrase = "No public profiles"
+		}
+		clause := phrase + " for " + codeSpan(doc.Username)
+		if fromMailbox && profiles > 0 {
+			clause += " (weaker than an email match; the username was taken from the mailbox)"
+		}
+		parts = append(parts, clause)
+	}
+	if len(parts) == 0 {
+		parts = append(parts, "No findings")
+	}
+	line := parts[0]
+	if len(parts) == 2 {
+		line = parts[0] + ", and " + parts[1]
+	}
+	if unchecked > 0 {
+		line += ". " + countPhrase(unchecked, "check was", "checks were") + " not completed"
+	}
+	return line + "."
+}
+
+func writeFindings(b *strings.Builder, doc Document) {
+	b.WriteString("## Findings\n\n")
+	found := foundRows(doc.Results)
 	if len(found) == 0 {
 		switch {
 		case doc.Email != "" && doc.Username != "":
@@ -344,50 +436,220 @@ func WriteMarkdown(w io.Writer, doc Document, elapsed time.Duration) error {
 		default:
 			b.WriteString("No accounts found.\n\n")
 		}
-	}
-	for _, res := range found {
-		fmt.Fprintf(&b, "### %s\n\n", res.Site)
-		fmt.Fprintf(&b, "- Domain: %s\n", res.Domain)
-		fmt.Fprintf(&b, "- Category: %s\n", res.Category)
-		fmt.Fprintf(&b, "- Method: %s\n", res.Method)
-		if res.DeleteURL != "" {
-			fmt.Fprintf(&b, "- Delete: %s\n", res.DeleteURL)
-		}
-		if res.SecurityURL != "" {
-			fmt.Fprintf(&b, "- Security: %s\n", res.SecurityURL)
-		}
-		if res.ProfileURL != "" {
-			fmt.Fprintf(&b, "- Profile: %s\n", res.ProfileURL)
-		}
-		if res.Detail != "" {
-			fmt.Fprintf(&b, "- Detail: %s\n", res.Detail)
-		}
-		b.WriteString("\n")
-	}
-	writeStatusSection(&b, "Not found", notFound)
-	writeStatusSection(&b, "Rate limited", limited)
-	writeStatusSection(&b, "Error", failed)
-	_, err := io.WriteString(w, b.String())
-	return err
-}
-
-func writeStatusSection(b *strings.Builder, title string, rows []checker.Result) {
-	fmt.Fprintf(b, "## %s\n\n", title)
-	if len(rows) == 0 {
-		b.WriteString("None.\n\n")
 		return
 	}
-	for _, res := range rows {
-		fmt.Fprintf(b, "- **%s**", res.Site)
-		if res.Domain != "" {
-			fmt.Fprintf(b, " (%s)", res.Domain)
+	fromMailbox := usernameFromMailbox(doc.Email, doc.Username)
+	sort.SliceStable(found, func(i, j int) bool {
+		si, sj := findingRank(found[i], fromMailbox), findingRank(found[j], fromMailbox)
+		if si != sj {
+			return si < sj
 		}
-		if res.Detail != "" {
-			fmt.Fprintf(b, ": %s", res.Detail)
+		return found[i].Site < found[j].Site
+	})
+	b.WriteString("| Site | Method | Evidence |\n| --- | --- | --- |\n")
+	for _, res := range found {
+		fmt.Fprintf(b, "| %s | %s | %s |\n", mdCell(res.Site), mdCell(res.Method), mdCell(findingEvidence(res, fromMailbox)))
+	}
+	b.WriteString("\n")
+}
+
+func findingEvidence(res checker.Result, fromMailbox bool) string {
+	sentence := evidenceSentence(res, fromMailbox)
+	if res.ProfileURL == "" {
+		return sentence
+	}
+	if sentence == "" {
+		return res.ProfileURL
+	}
+	return sentence + " " + res.ProfileURL
+}
+
+func findingRank(res checker.Result, fromMailbox bool) int {
+	switch res.Method {
+	case "register", "login", "password_reset":
+		return 0
+	case "breach":
+		return 1
+	case "profile":
+		if fromMailbox {
+			return 3
+		}
+		return 2
+	default:
+		return 4
+	}
+}
+
+func writeCoverage(b *strings.Builder, doc Document, meta Meta) {
+	b.WriteString("## Coverage\n\n")
+	fmt.Fprintf(b, "%d found, %d not found, %d rate limited, %d error.\n\n",
+		doc.Summary.Found, doc.Summary.NotFound, doc.Summary.RateLimited, doc.Summary.Error)
+	version := meta.Version
+	if strings.TrimSpace(version) == "" {
+		version = "dev"
+	}
+	when := "unknown time"
+	if !meta.RanAt.IsZero() {
+		when = meta.RanAt.UTC().Format("2006-01-02 15:04 UTC")
+	}
+	fmt.Fprintf(b, "footprint %s · %s · %s\n\n", version, when, formatDuration(meta.Elapsed))
+	b.WriteString("Unchecked:\n\n")
+	var limited, failed []checker.Result
+	for _, res := range doc.Results {
+		switch res.Status {
+		case checker.StatusRateLimited:
+			limited = append(limited, res)
+		case checker.StatusFound, checker.StatusNotFound:
+		default:
+			failed = append(failed, res)
+		}
+	}
+	sort.Slice(limited, func(i, j int) bool { return limited[i].Site < limited[j].Site })
+	sort.Slice(failed, func(i, j int) bool { return failed[i].Site < failed[j].Site })
+	if len(limited) == 0 && len(failed) == 0 {
+		if doc.Summary.RateLimited+doc.Summary.Error == 0 {
+			b.WriteString("None.\n\n")
+		} else {
+			b.WriteString("Names were not included in this export.\n\n")
+		}
+		return
+	}
+	for _, res := range limited {
+		fmt.Fprintf(b, "- **%s** — rate limited\n", res.Site)
+	}
+	for _, res := range failed {
+		fmt.Fprintf(b, "- **%s** — error", res.Site)
+		if detail := oneLine(res.Detail, 0); detail != "" {
+			fmt.Fprintf(b, ". %s", detail)
 		}
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
+}
+
+func writeActions(b *strings.Builder, doc Document) {
+	b.WriteString("## Actions\n\n")
+	names := breachNames(doc.Results)
+	var rows []checker.Result
+	for _, res := range doc.Results {
+		if res.Status != checker.StatusFound {
+			continue
+		}
+		if res.DeleteURL == "" && res.SecurityURL == "" {
+			continue
+		}
+		rows = append(rows, res)
+	}
+	if len(rows) == 0 {
+		b.WriteString("None.\n")
+		return
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		mi := len(matchingBreaches(rows[i].Site, names)) > 0
+		mj := len(matchingBreaches(rows[j].Site, names)) > 0
+		if mi != mj {
+			return mi
+		}
+		return rows[i].Site < rows[j].Site
+	})
+	for _, res := range rows {
+		matched := matchingBreaches(res.Site, names)
+		fmt.Fprintf(b, "- **%s**", res.Site)
+		if len(matched) > 0 {
+			fmt.Fprintf(b, " — Change the password and turn on 2FA. This address appears in the %s.", breachNote(matched))
+		}
+		b.WriteString("\n")
+		if res.SecurityURL != "" {
+			fmt.Fprintf(b, "  - Security: %s\n", res.SecurityURL)
+		}
+		if res.DeleteURL != "" {
+			fmt.Fprintf(b, "  - Delete: %s\n", res.DeleteURL)
+		}
+	}
+}
+
+func foundRows(results []checker.Result) []checker.Result {
+	var found []checker.Result
+	for _, res := range results {
+		if res.Status == checker.StatusFound {
+			found = append(found, res)
+		}
+	}
+	return found
+}
+
+func breachNames(results []checker.Result) []string {
+	var names []string
+	seen := map[string]struct{}{}
+	for _, res := range results {
+		if res.Status != checker.StatusFound || res.Method != "breach" {
+			continue
+		}
+		for _, name := range strings.Split(res.Detail, ",") {
+			name = strings.TrimSpace(name)
+			key := normalizeName(name)
+			if key == "" {
+				continue
+			}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+func matchingBreaches(site string, names []string) []string {
+	key := normalizeName(site)
+	var matched []string
+	for _, name := range names {
+		if normalizeName(name) == key {
+			matched = append(matched, name)
+		}
+	}
+	return matched
+}
+
+func breachNote(names []string) string {
+	if len(names) == 1 {
+		return names[0] + " breach"
+	}
+	return humanList(names) + " breaches"
+}
+
+func humanList(names []string) string {
+	if len(names) == 2 {
+		return names[0] + " and " + names[1]
+	}
+	return strings.Join(names[:len(names)-1], ", ") + ", and " + names[len(names)-1]
+}
+
+func normalizeName(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func codeSpan(s string) string {
+	return "`" + strings.ReplaceAll(s, "`", "'") + "`"
+}
+
+func mdCell(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	return strings.ReplaceAll(s, "|", "\\|")
+}
+
+func countPhrase(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
 }
 
 func summaryLine(sum Summary, color bool) string {

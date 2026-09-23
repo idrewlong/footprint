@@ -31,12 +31,14 @@ func (s *gravatar) Check(ctx context.Context, c *http.Client, email string) chec
 
 func (s *gravatar) result(status checker.Status, detail string, elapsed time.Duration) checker.Result {
 	return base{
-		name:        "gravatar",
-		domain:      "gravatar.com",
-		category:    "social",
-		method:      "login",
-		deleteURL:   "https://gravatar.com/profile",
-		securityURL: "https://gravatar.com/profile",
+		name:          "gravatar",
+		domain:        "gravatar.com",
+		category:      "social",
+		method:        "login",
+		deleteURL:     "https://gravatar.com/profile",
+		securityURL:   "https://gravatar.com/profile",
+		foundEvidence: "Profile lookup found an account for this email.",
+		missEvidence:  "Profile lookup said this email has no account.",
 	}.result(status, detail, elapsed)
 }
 

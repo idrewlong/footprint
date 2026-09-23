@@ -30,12 +30,14 @@ func (s *chess) Check(ctx context.Context, c *http.Client, email string) checker
 
 func (s *chess) result(status checker.Status, detail string, elapsed time.Duration) checker.Result {
 	return base{
-		name:        "chess",
-		domain:      "chess.com",
-		category:    "entertainment",
-		method:      "register",
-		deleteURL:   "https://www.chess.com/settings",
-		securityURL: "https://www.chess.com/settings",
+		name:          "chess",
+		domain:        "chess.com",
+		category:      "entertainment",
+		method:        "register",
+		deleteURL:     "https://www.chess.com/settings",
+		securityURL:   "https://www.chess.com/settings",
+		foundEvidence: "Signup endpoint said this email is already registered.",
+		missEvidence:  "Signup endpoint said this email can still be registered.",
 	}.result(status, detail, elapsed)
 }
 

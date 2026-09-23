@@ -23,7 +23,7 @@ func TestSelectFilters(t *testing.T) {
 }
 
 func TestSelectUnknownCategory(t *testing.T) {
-	if _, err := Select([]string{"shopping"}, nil); err == nil {
+	if _, err := Select([]string{"news"}, nil); err == nil {
 		t.Fatal("expected unknown category")
 	}
 }

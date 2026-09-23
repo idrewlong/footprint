@@ -29,12 +29,14 @@ func (s *x) Check(ctx context.Context, c *http.Client, email string) checker.Res
 
 func (s *x) result(status checker.Status, detail string, elapsed time.Duration) checker.Result {
 	return base{
-		name:        "x",
-		domain:      "x.com",
-		category:    "social",
-		method:      "register",
-		deleteURL:   "https://x.com/settings/deactivate",
-		securityURL: "https://x.com/settings/account",
+		name:          "x",
+		domain:        "x.com",
+		category:      "social",
+		method:        "register",
+		deleteURL:     "https://x.com/settings/deactivate",
+		securityURL:   "https://x.com/settings/account",
+		foundEvidence: "Email availability endpoint said this email is taken.",
+		missEvidence:  "Email availability endpoint said this email is not taken.",
 	}.result(status, detail, elapsed)
 }
 

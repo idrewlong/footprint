@@ -1,0 +1,11 @@
+HTTP/1.1 400 Bad Request
+Content-Type: text/html
+Set-Cookie: JSESSIONID=session-token; Path=/p; Secure; HttpOnly
+Set-Cookie: signin-cookie="cookie-token"; Path=/; HttpOnly; Secure
+
+ok
+---
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"status":false,"message":"register_email_not_existed","errorCode":null,"underage":false}

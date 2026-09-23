@@ -21,7 +21,7 @@ Map responses explicitly:
 return checker.Result{Status: checker.StatusRateLimited}
 
 // email is registered
-return checker.Result{Status: checker.StatusFound, DeleteURL: "...", SecurityURL: "..."}
+return checker.Result{Status: checker.StatusFound, Evidence: "Signup endpoint said this email is already registered.", DeleteURL: "...", SecurityURL: "..."}
 ```
 
 Each site needs `testdata/<name>/found.http`, `not_found.http`, and `rate_limited.http`. `go test ./pkg/sites/ -run <Name>` must pass offline. Live requests belong in the manual `live` job.

@@ -25,6 +25,7 @@ func (f fakeSite) Check(ctx context.Context, c *http.Client, email string) check
 	if f.status == checker.StatusFound {
 		res.DeleteURL = "https://example.com/delete"
 		res.SecurityURL = "https://example.com/security"
+		res.Evidence = "Signup endpoint said this email is already registered."
 	}
 	return res
 }
@@ -41,6 +42,7 @@ func (f fakeProfile) Check(ctx context.Context, c *http.Client, username string)
 	return checker.Result{
 		Status:     checker.StatusFound,
 		ProfileURL: "https://" + f.domain + "/" + username,
+		Evidence:   "Public profile exists for this username.",
 		Detail:     "Octo Cat",
 		Duration:   5 * time.Millisecond,
 	}
@@ -75,7 +77,7 @@ func TestSitesList(t *testing.T) {
 
 func TestSitesUnknownCategory(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	if code := execute([]string{"sites", "--category", "shopping"}, &stdout, &stderr); code != 2 {
+	if code := execute([]string{"sites", "--category", "news"}, &stdout, &stderr); code != 2 {
 		t.Fatalf("code %d", code)
 	}
 	if !strings.Contains(stderr.String(), "unknown category") {
@@ -145,8 +147,11 @@ func TestScanPrintsRows(t *testing.T) {
 	if !strings.Contains(out, "●") || !strings.Contains(out, "alpha") || !strings.Contains(out, "dev") || !strings.Contains(out, "https://example.com/delete") {
 		t.Fatalf("report missing:\n%s", out)
 	}
-	if strings.Contains(out, "SITE") || strings.Contains(out, "https://example.com/security") || strings.Contains(out, "METHOD") || strings.Contains(out, "register") {
+	if strings.Contains(out, "SITE") || strings.Contains(out, "https://example.com/security") || strings.Contains(out, "METHOD") {
 		t.Fatalf("terminal included extra fields:\n%s", out)
+	}
+	if !strings.Contains(out, "register · Signup endpoint said this email is already registered.") {
+		t.Fatalf("terminal missing evidence:\n%s", out)
 	}
 	if strings.Contains(out, "beta") || strings.Contains(out, "not_found") {
 		t.Fatalf("terminal listed a miss:\n%s", out)
@@ -255,10 +260,24 @@ func TestScanMarkdownListsEveryStatus(t *testing.T) {
 		t.Fatalf("code %d stderr %s", code, stderr.String())
 	}
 	out := stdout.String()
-	for _, name := range []string{"alpha", "beta", "gamma", "delta", "## Not found", "## Rate limited", "## Error"} {
-		if !strings.Contains(out, name) {
-			t.Fatalf("markdown missing %s:\n%s", name, out)
+	for _, want := range []string{
+		"**Bottom line:**",
+		"## Findings",
+		"| alpha | register | Signup endpoint said this email is already registered. |",
+		"## Coverage",
+		"## Actions",
+		"https://example.com/security",
+		"https://example.com/delete",
+		"Unchecked:",
+		"- **gamma** — rate limited",
+		"- **delta** — error",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("markdown missing %s:\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "beta") {
+		t.Fatalf("markdown listed a miss:\n%s", out)
 	}
 }
 

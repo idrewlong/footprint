@@ -28,12 +28,14 @@ func (s *replit) Check(ctx context.Context, c *http.Client, email string) checke
 
 func (s *replit) result(status checker.Status, detail string, elapsed time.Duration) checker.Result {
 	return base{
-		name:        "replit",
-		domain:      "replit.com",
-		category:    "dev",
-		method:      "register",
-		deleteURL:   "https://replit.com/account",
-		securityURL: "https://replit.com/account",
+		name:          "replit",
+		domain:        "replit.com",
+		category:      "dev",
+		method:        "register",
+		deleteURL:     "https://replit.com/account",
+		securityURL:   "https://replit.com/account",
+		foundEvidence: "Signup endpoint said this email already exists.",
+		missEvidence:  "Signup endpoint said this email does not exist.",
 	}.result(status, detail, elapsed)
 }
 

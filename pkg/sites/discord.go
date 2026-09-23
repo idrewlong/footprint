@@ -30,12 +30,14 @@ func (s *discord) Check(ctx context.Context, c *http.Client, email string) check
 
 func (s *discord) result(status checker.Status, detail string, elapsed time.Duration) checker.Result {
 	return base{
-		name:        "discord",
-		domain:      "discord.com",
-		category:    "social",
-		method:      "register",
-		deleteURL:   "https://support.discord.com/hc/en-us/articles/212500837",
-		securityURL: "https://discord.com/settings/account",
+		name:          "discord",
+		domain:        "discord.com",
+		category:      "social",
+		method:        "register",
+		deleteURL:     "https://support.discord.com/hc/en-us/articles/212500837",
+		securityURL:   "https://discord.com/settings/account",
+		foundEvidence: "Signup validator said this email is already registered.",
+		missEvidence:  "Signup validator did not report this email as registered.",
 	}.result(status, detail, elapsed)
 }
 

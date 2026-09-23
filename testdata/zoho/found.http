@@ -1,0 +1,10 @@
+HTTP/1.1 200 OK
+Content-Type: text/html
+Set-Cookie: iamcsr=test-csrf-token; Path=/; Secure
+
+ok
+---
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"status_code":201,"resource_name":"passwordauth","lookup":{"digest":"abc123digest","identifier":"1001","loginid":"user@example.com"}}

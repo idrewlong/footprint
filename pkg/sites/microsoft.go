@@ -29,12 +29,14 @@ func (s *microsoft) Check(ctx context.Context, c *http.Client, email string) che
 
 func (s *microsoft) result(status checker.Status, detail string, elapsed time.Duration) checker.Result {
 	return base{
-		name:        "microsoft",
-		domain:      "microsoft.com",
-		category:    "productivity",
-		method:      "login",
-		deleteURL:   "https://account.live.com/closeaccount.aspx",
-		securityURL: "https://account.microsoft.com/security",
+		name:          "microsoft",
+		domain:        "microsoft.com",
+		category:      "productivity",
+		method:        "login",
+		deleteURL:     "https://account.live.com/closeaccount.aspx",
+		securityURL:   "https://account.microsoft.com/security",
+		foundEvidence: "Login lookup said this email is already registered.",
+		missEvidence:  "Login lookup said this email is not registered.",
 	}.result(status, detail, elapsed)
 }
 

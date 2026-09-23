@@ -10,6 +10,7 @@ import (
 	"net/mail"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -28,8 +29,10 @@ Passwords and other stolen values are not requested or shown.
 The terminal lists found accounts, one action link each, and names sites it could not check.
 Each breach name is on its own line. Color is used when stdout is a terminal.
 The summary still counts every check.
-JSON and Markdown include found, not found, rate limited, and error.
+JSON includes found, not found, rate limited, and error.
+Markdown is a one-page case note: a bottom line, findings with the signal each check used, coverage, and actions.
 A username hit includes the public profile link and display name when the site shows one.
+A found row includes the method and the evidence sentence.
 
 Usage:
   footprint scan email <email> [flags]
@@ -243,10 +246,10 @@ func runScan(args []string, stdout, stderr io.Writer, catalog, profilesCatalog c
 	prog.finish()
 	var doc report.Document
 	if email != "" {
-		doc = report.Build(email, results, onlyFound && !human)
+		doc = report.Build(email, results, onlyFound && asJSON)
 		doc.Username = username
 	} else {
-		doc = report.BuildUser(username, results, onlyFound && !human)
+		doc = report.BuildUser(username, results, onlyFound && asJSON)
 	}
 	elapsed := time.Since(start)
 	if human {
@@ -260,7 +263,7 @@ func runScan(args []string, stdout, stderr io.Writer, catalog, profilesCatalog c
 	if asJSON {
 		writeErr = report.WriteJSON(stdout, doc)
 	} else {
-		writeErr = report.WriteMarkdown(stdout, doc, elapsed)
+		writeErr = report.WriteMarkdown(stdout, doc, report.Meta{Version: toolVersion(), RanAt: start, Elapsed: elapsed})
 	}
 	if writeErr != nil {
 		fmt.Fprintf(stderr, "footprint: %v\n", writeErr)
@@ -343,7 +346,7 @@ func runUser(args []string, stdout, stderr io.Writer, catalog catalogFunc) int {
 		prog.add(res.Status)
 	}
 	prog.finish()
-	doc := report.BuildUser(username, results, onlyFound && !human)
+	doc := report.BuildUser(username, results, onlyFound && asJSON)
 	elapsed := time.Since(start)
 	if human {
 		if err := report.WriteHuman(stdout, doc, elapsed, useColor(stdout)); err != nil {
@@ -356,13 +359,21 @@ func runUser(args []string, stdout, stderr io.Writer, catalog catalogFunc) int {
 	if asJSON {
 		writeErr = report.WriteJSON(stdout, doc)
 	} else {
-		writeErr = report.WriteMarkdown(stdout, doc, elapsed)
+		writeErr = report.WriteMarkdown(stdout, doc, report.Meta{Version: toolVersion(), RanAt: start, Elapsed: elapsed})
 	}
 	if writeErr != nil {
 		fmt.Fprintf(stderr, "footprint: %v\n", writeErr)
 		return 1
 	}
 	return 0
+}
+
+func toolVersion() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok || info.Main.Version == "" || info.Main.Version == "(devel)" {
+		return "dev"
+	}
+	return info.Main.Version
 }
 
 func normalizeUsername(raw string) (string, bool) {

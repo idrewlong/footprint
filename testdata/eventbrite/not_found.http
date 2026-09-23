@@ -1,0 +1,10 @@
+HTTP/1.1 200 OK
+Content-Type: text/html
+Set-Cookie: csrftoken=csrf-token; Path=/; Secure
+
+ok
+---
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"can_login":false,"exists":false,"is_email_verified":false,"sign_in_methods":[],"enable_auth0_login_for_user":false,"auth0_redirect_url":null}

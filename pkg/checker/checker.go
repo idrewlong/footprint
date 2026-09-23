@@ -30,12 +30,18 @@ const (
 
 // Result is one site's outcome. Duration is a Go duration in memory and
 // milliseconds in JSON, under duration_ms.
+//
+// Method is register, login, password_reset, breach, or profile.
+// Evidence is the signal that produced Status, such as "Signup endpoint
+// said this email is already registered." A found status with an empty
+// Evidence is a claim, not a finding.
 type Result struct {
 	Site        string        `json:"site"`
 	Domain      string        `json:"domain"`
 	Category    string        `json:"category"`
 	Method      string        `json:"method"`
 	Status      Status        `json:"status"`
+	Evidence    string        `json:"evidence,omitempty"`
 	DeleteURL   string        `json:"delete_url,omitempty"`
 	SecurityURL string        `json:"security_url,omitempty"`
 	ProfileURL  string        `json:"profile_url,omitempty"`
@@ -49,6 +55,7 @@ type resultJSON struct {
 	Category    string `json:"category"`
 	Method      string `json:"method"`
 	Status      Status `json:"status"`
+	Evidence    string `json:"evidence,omitempty"`
 	DeleteURL   string `json:"delete_url,omitempty"`
 	SecurityURL string `json:"security_url,omitempty"`
 	ProfileURL  string `json:"profile_url,omitempty"`
@@ -64,6 +71,7 @@ func (r Result) MarshalJSON() ([]byte, error) {
 		Category:    r.Category,
 		Method:      r.Method,
 		Status:      r.Status,
+		Evidence:    r.Evidence,
 		DeleteURL:   r.DeleteURL,
 		SecurityURL: r.SecurityURL,
 		ProfileURL:  r.ProfileURL,
@@ -84,6 +92,7 @@ func (r *Result) UnmarshalJSON(data []byte) error {
 		Category:    wire.Category,
 		Method:      wire.Method,
 		Status:      wire.Status,
+		Evidence:    wire.Evidence,
 		DeleteURL:   wire.DeleteURL,
 		SecurityURL: wire.SecurityURL,
 		ProfileURL:  wire.ProfileURL,

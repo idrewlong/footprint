@@ -1,0 +1,10 @@
+HTTP/1.1 200 OK
+Content-Type: text/html
+Set-Cookie: iamcsr=test-csrf-token; Path=/; Secure
+
+ok
+---
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"status_code":400,"resource_name":"lookup","message":"User does not exists","errors":[{"code":"U401","message":"User does not exists"}],"localized_message":"This account cannot be found."}

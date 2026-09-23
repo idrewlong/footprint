@@ -31,12 +31,14 @@ func (s *github) Check(ctx context.Context, c *http.Client, email string) checke
 
 func (s *github) result(status checker.Status, detail string, elapsed time.Duration) checker.Result {
 	return base{
-		name:        "github",
-		domain:      "github.com",
-		category:    "dev",
-		method:      "register",
-		deleteURL:   "https://github.com/settings/admin",
-		securityURL: "https://github.com/settings/security",
+		name:          "github",
+		domain:        "github.com",
+		category:      "dev",
+		method:        "register",
+		deleteURL:     "https://github.com/settings/admin",
+		securityURL:   "https://github.com/settings/security",
+		foundEvidence: "Signup endpoint said this email is already registered.",
+		missEvidence:  "Signup endpoint said this email is available.",
 	}.result(status, detail, elapsed)
 }
 

@@ -30,12 +30,14 @@ func (s *twitch) Check(ctx context.Context, c *http.Client, email string) checke
 
 func (s *twitch) result(status checker.Status, detail string, elapsed time.Duration) checker.Result {
 	return base{
-		name:        "twitch",
-		domain:      "twitch.tv",
-		category:    "entertainment",
-		method:      "register",
-		deleteURL:   "https://www.twitch.tv/settings/profile",
-		securityURL: "https://www.twitch.tv/settings/security",
+		name:          "twitch",
+		domain:        "twitch.tv",
+		category:      "entertainment",
+		method:        "register",
+		deleteURL:     "https://www.twitch.tv/settings/profile",
+		securityURL:   "https://www.twitch.tv/settings/security",
+		foundEvidence: "Signup endpoint said this email already has an account.",
+		missEvidence:  "Signup endpoint said this email has no account.",
 	}.result(status, detail, elapsed)
 }
 

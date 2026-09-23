@@ -72,8 +72,12 @@ func profileResult(name, domain, category, profile string, status checker.Status
 		Detail:   oneLine(detail),
 		Duration: elapsed,
 	}
-	if status == checker.StatusFound {
+	switch status {
+	case checker.StatusFound:
 		res.ProfileURL = profile
+		res.Evidence = "Public profile exists for this username."
+	case checker.StatusNotFound:
+		res.Evidence = "No public profile exists for this username."
 	}
 	return res
 }

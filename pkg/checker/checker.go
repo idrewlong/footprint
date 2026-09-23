@@ -31,7 +31,7 @@ const (
 // Result is one site's outcome. Duration is a Go duration in memory and
 // milliseconds in JSON, under duration_ms.
 //
-// Method is register, login, password_reset, breach, or profile.
+// Method is register, login, password_reset, breach, profile, dns, infra, or entity.
 // Evidence is the signal that produced Status, such as "Signup endpoint
 // said this email is already registered." A found status with an empty
 // Evidence is a claim, not a finding.

@@ -1,0 +1,36 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/footprint
+/footprint-mcp
+
+# Test and coverage output
+*.test
+*.out
+coverage.*
+*.coverprofile
+__debug_bin*
+
+# GoReleaser
+/dist/
+
+# Dependencies and local workspace
+/vendor/
+go.work
+go.work.sum
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editor and OS
+.idea/
+.vscode/
+.DS_Store
+*.swp

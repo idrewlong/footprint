@@ -1,0 +1,4 @@
+HTTP/1.1 400 Bad Request
+Content-Type: application/json
+
+{"message":"Invalid Form Body","code":50035,"errors":{"email":{"_errors":[{"code":"EMAIL_ALREADY_REGISTERED","message":"Email is already registered."}]}}}

@@ -1,0 +1,9 @@
+HTTP/1.1 200 OK
+Content-Type: text/html
+
+<html><body><input type="hidden" name="authenticity_token" value="tok123"></body></html>
+---
+HTTP/1.1 200 OK
+Content-Type: text/plain
+
+ok

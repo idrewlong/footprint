@@ -1,0 +1,4 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"email":{"valid":false,"error_messages":["Sorry, that email address is already registered to another account."]}}

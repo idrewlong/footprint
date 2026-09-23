@@ -1,0 +1,4 @@
+HTTP/1.1 400 Bad Request
+Content-Type: application/json
+
+{"message":"Invalid Form Body","code":50035,"errors":{"password":{"_errors":[{"code":"BASE_TYPE_MIN_LENGTH","message":"Must be 6 or more in length."}]},"date_of_birth":{"_errors":[{"code":"BASE_TYPE_REQUIRED","message":"This field is required"}]}}}

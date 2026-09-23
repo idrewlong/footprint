@@ -1,0 +1,15 @@
+---
+description: Checker, front ends, and result rendering
+globs: pkg/checker/**/*.go,pkg/report/**/*.go,cmd/**/*.go,internal/httpx/**/*.go
+alwaysApply: false
+---
+
+# Engine and front ends
+
+`pkg/checker` runs every registered `Site` with a concurrency cap (default 16, `--concurrency`) and a per-check timeout (default 10s). Results stream on a channel. A 429 or known block page becomes `rate_limited` through per-domain backoff.
+
+`cmd/footprint`, the TUI, and `cmd/footprint-mcp` call `Run` and render `Result`. They do not contain site logic.
+
+`scan_email` returns summary counts plus results. A partial run stays partial.
+
+MCP HTTP, if added, binds to localhost unless the user explicitly overrides it. Stdio is the default transport.

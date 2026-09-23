@@ -1,0 +1,10 @@
+HTTP/1.1 200 OK
+Content-Type: text/html
+Set-Cookie: __Host-js_csrf=csrf-token; Path=/; Secure
+
+ok
+---
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"exists":true,"exists_as_recovery_email":false,"has_passkey":false}

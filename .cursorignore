@@ -1,0 +1,17 @@
+# Build output and dependencies. Source and testdata stay visible.
+/dist/
+/vendor/
+/footprint
+/footprint-mcp
+*.exe
+*.test
+*.out
+coverage.*
+*.coverprofile
+__debug_bin*
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key

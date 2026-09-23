@@ -1,0 +1,16 @@
+---
+description: Constraints footprint must not cross
+alwaysApply: true
+---
+
+# Boundaries
+
+Local-first Go tool. It reports which sites have an account for an email. Design detail is in `project-overview.md`. `AGENTS.md` wins if the two disagree.
+
+- Checks run on the user's machine. No hosted lookup, telemetry, or any send of the email except to the site being checked.
+- No login, submitted passwords, or credential checks.
+- A breach check may report breach names for the email. Do not return passwords, hashes, or other stolen values.
+- Password-reset checks may email the address being checked. Do not create an account.
+- Statuses are only `found`, `not_found`, `rate_limited`, and `error`. An unknown outcome is never `not_found`.
+- Do not copy Holehe modules. Each check is written from that site's public behavior.
+- Ship in order: checker and CLI, then MCP, then TUI, then 100+ sites.

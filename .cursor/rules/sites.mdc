@@ -1,0 +1,29 @@
+---
+description: How to add or change a site check
+globs: pkg/sites/**/*.go,testdata/**
+alwaysApply: false
+---
+
+# Site checks
+
+One file per site in `pkg/sites/`, registered in `init`. The file implements `Site` and contains that site's request and response mapping. Nothing else imports a concrete site type.
+
+```go
+func init() { Register(&github{}) }
+
+func (github) Method() string { return "register" } // register | login | password_reset
+```
+
+Map responses explicitly:
+
+```go
+// 429 or a known block page
+return checker.Result{Status: checker.StatusRateLimited}
+
+// email is registered
+return checker.Result{Status: checker.StatusFound, DeleteURL: "...", SecurityURL: "..."}
+```
+
+Each site needs `testdata/<name>/found.http`, `not_found.http`, and `rate_limited.http`. `go test ./pkg/sites/ -run <Name>` must pass offline. Live requests belong in the manual `live` job.
+
+Set `DeleteURL` and `SecurityURL` when the site has those pages.

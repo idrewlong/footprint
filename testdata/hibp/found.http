@@ -1,0 +1,4 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+[{"Name":"LinkedIn"},{"Name":"Adobe","Title":"Adobe","DataClasses":["Passwords"]}]

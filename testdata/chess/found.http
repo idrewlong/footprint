@@ -1,0 +1,4 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"isEmailAvailable":false,"reason":"This email is already in use."}

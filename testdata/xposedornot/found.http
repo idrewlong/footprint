@@ -1,0 +1,4 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"breaches":[["LinkedIn","Adobe"]],"email":"test@example.com","password":"secret-value","status":"success"}

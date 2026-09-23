@@ -1,0 +1,4 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"status":20,"errors":{"email":"That email is already registered to an account."}}

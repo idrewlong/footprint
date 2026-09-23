@@ -1,0 +1,10 @@
+HTTP/1.1 200 OK
+Content-Type: text/html
+Set-Cookie: csrftoken=abc123; Path=/
+
+<html><body>"csrf_token":"abc123"</body></html>
+---
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"available":true,"valid":true,"status":"ok"}

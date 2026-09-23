@@ -23,10 +23,13 @@ type Summary struct {
 
 // Document is the machine-readable scan report.
 type Document struct {
-	Email    string           `json:"email,omitempty"`
-	Username string           `json:"username,omitempty"`
-	Summary  Summary          `json:"summary"`
-	Results  []checker.Result `json:"results"`
+	Email         string           `json:"email,omitempty"`
+	Username      string           `json:"username,omitempty"`
+	SubjectDomain string           `json:"subject_domain,omitempty"`
+	SubjectIP     string           `json:"subject_ip,omitempty"`
+	SubjectEntity string           `json:"subject_entity,omitempty"`
+	Summary       Summary          `json:"summary"`
+	Results       []checker.Result `json:"results"`
 }
 
 // Build summarizes results. onlyFound drops every row that is not a hit

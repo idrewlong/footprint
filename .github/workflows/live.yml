@@ -1,0 +1,48 @@
+name: live
+
+# Hits real sites. Manually triggered only, so the normal suite never
+# depends on third-party endpoints.
+on:
+  workflow_dispatch:
+    inputs:
+      allow_notify:
+        description: "Also run checks that can email the address (password reset)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: live site checks
+        env:
+          FOOTPRINT_LIVE_ALLOW_NOTIFY: ${{ inputs.allow_notify && '1' || '' }}
+          HIBP_API_KEY: ${{ secrets.HIBP_API_KEY }}
+          FOOTPRINT_LIVE_CANARY_EMAIL: ${{ secrets.FOOTPRINT_LIVE_CANARY_EMAIL }}
+          FOOTPRINT_LIVE_CANARY_SITES: ${{ vars.FOOTPRINT_LIVE_CANARY_SITES }}
+        run: |
+          go test -tags live -count=1 -v \
+            -run '^TestLive(UnregisteredAddress|Canary)$' ./pkg/sites/ 2>&1 | tee live.log
+          exit "${PIPESTATUS[0]}"
+      - name: summary
+        if: always()
+        run: |
+          {
+            echo "### Live site checks"
+            echo
+            echo "| Result | Count |"
+            echo "|---|---|"
+            echo "| pass | $(grep -c -- '--- PASS: TestLive[UC].*/' live.log || true) |"
+            echo "| fail | $(grep -c -- '--- FAIL: TestLive[UC].*/' live.log || true) |"
+            echo "| skipped (rate limited, no key, or notifying) | $(grep -c -- '--- SKIP: TestLive[UC].*/' live.log || true) |"
+            echo
+            echo "Failed sites:"
+            grep -- '--- FAIL: TestLive[UC].*/' live.log | sed 's/.*\//- /; s/ (.*//' || echo "none"
+          } >> "$GITHUB_STEP_SUMMARY"

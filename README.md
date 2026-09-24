@@ -1,17 +1,42 @@
 # footprint
 
+[![ci](https://github.com/idrewlong/footprint/actions/workflows/ci.yml/badge.svg)](https://github.com/idrewlong/footprint/actions/workflows/ci.yml)
+
 Find accounts registered to an email address, and public profiles for a username. `footprint scan email` checks that address. `footprint scan username` checks public profiles. Pass both arguments to run the two together. An email scan includes breach names from XposedOrNot, LeakCheck, and Have I Been Pwned when `HIBP_API_KEY` is set. Breach checks list names and do not return passwords or other stolen values. The tool does not log in or submit a password. A password-reset check may email the address being checked when that site's response shows whether the account exists.
 
 ## Install
 
 ```bash
-go install github.com/idrewlong/footprint/cmd/footprint@latest
+brew install idrewlong/tap/footprint          # installs footprint and footprint-mcp
+go install github.com/idrewlong/footprint/cmd/...@latest
 ```
+
+Release archives for Linux, macOS, and Windows (amd64 and arm64) are on the GitHub releases page, each with an SPDX SBOM and a cosign-signed checksum file.
 
 From a checkout:
 
 ```bash
 go build -o footprint ./cmd/footprint
+go build -o footprint-mcp ./cmd/footprint-mcp
+```
+
+### Verifying a release
+
+`checksums.txt` covers every archive and SBOM, and is signed keylessly by this repository's release workflow:
+
+```bash
+cosign verify-blob checksums.txt \
+  --bundle checksums.txt.sigstore.json \
+  --certificate-identity-regexp '^https://github.com/idrewlong/footprint/\.github/workflows/release\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+shasum -a 256 --ignore-missing -c checksums.txt
+```
+
+Builds are reproducible. From the tagged checkout, with the Go version in `go.mod`, this produces a binary byte-identical to the one in the release archive for that platform:
+
+```bash
+git checkout v0.2.0
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -buildid=" ./cmd/footprint
 ```
 
 ## Usage
@@ -94,6 +119,43 @@ footprint export case.json --format neo4j    # also: misp, maltego
 
 `export` builds a pivot graph from one or more saved case files — email → username → accounts → profiles → domain → IP → organization, plus breach nodes — and writes it in the format your tools read: **GraphML** (yEd, Gephi, Neo4j import), a Neo4j nodes-and-relationships **JSON**, a **STIX 2.1** bundle of Cyber Observables and relationships, a **MISP** event, or **Maltego** entity CSV. Several case files are merged first, so an email case and a domain case export as one connected graph. Exports carry breach names and dates but never a password, hash, or other stolen value. STIX identifiers are derived from the graph, so re-exporting the same case yields an identical bundle.
 
+## MCP server
+
+`footprint-mcp` lets an AI assistant such as Claude run checks over the Model Context Protocol, on stdio. It runs on your machine, like the CLI.
+
+```bash
+claude mcp add footprint -- footprint-mcp
+```
+
+Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{ "mcpServers": { "footprint": { "command": "footprint-mcp" } } }
+```
+
+| Tool | Input | Returns |
+|---|---|---|
+| `scan_email` | `email`, `categories?`, `only_found?` | Summary counts, `complete`, a one-line coverage `note`, and one result per site |
+| `check_site` | `email`, `site` | One result, for retrying a rate-limited site |
+| `list_sites` | `category?` | Sites with category, method, and whether the check can email the address |
+
+`complete` is false whenever a check was rate limited, errored, or skipped, and the `note` says those accounts are unknown, not absent, so the assistant cannot present a partial run as finished.
+
+Policy is set when the server starts, not by the assistant: `--allow-notify` (checks that can email the address), `--proxy`, `--concurrency`, `--timeout`, and `--save --case-id <id> --authority <text> [--case-dir path]`. With `--save`, every `scan_email` is written to the case directory and signed into the audit ledger, and the result includes `saved_to` and `audit_head`. For example:
+
+```bash
+claude mcp add footprint -- footprint-mcp --proxy socks5h://127.0.0.1:9050 --save --case-id C-2026-001 --authority "warrant 24-1234"
+```
+
+## Development
+
+```bash
+go test -race ./...     # fixture tests; never touch the network
+go test -tags live -run '^TestLive(UnregisteredAddress|Canary)$' -v ./pkg/sites/   # hits real sites
+```
+
+CI runs gofmt, `go mod tidy`, `go vet`, `go test -race`, `govulncheck`, and `goreleaser check` on every push and pull request. The live checks run only from the manually triggered `live` workflow: each site is checked with a random address (found or error fails; rate limited is skipped). Set the `FOOTPRINT_LIVE_CANARY_EMAIL` secret and `FOOTPRINT_LIVE_CANARY_SITES` variable to also confirm an address you control is still found, which catches a check that always says not found. Pushing a `v*` tag runs GoReleaser, which needs a `HOMEBREW_TAP_GITHUB_TOKEN` secret with write access to `idrewlong/homebrew-tap`.
+
 ## Layout
 
-Site checks live in `pkg/sites/`, one file per site. The CLI calls `pkg/checker` and renders results with `pkg/report`. Case files, the audit ledger, and `verify` live in `pkg/casefile`; the pivot graph and its exporters live in `pkg/graph`. Adding a site is described in `AGENTS.md`.
+Site checks live in `pkg/sites/`, one file per site. The CLI (`cmd/footprint`) and the MCP server (`cmd/footprint-mcp`) call `pkg/checker` and renders results with `pkg/report`. Case files, the audit ledger, and `verify` live in `pkg/casefile`; the pivot graph and its exporters live in `pkg/graph`. Adding a site is described in `AGENTS.md`.

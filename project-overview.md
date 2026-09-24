@@ -229,13 +229,13 @@ go install github.com/idrewlong/footprint/cmd/...@latest
 ## Roadmap
 
 **v0.1: core**
-- [ ] `pkg/checker` engine with concurrency, timeouts, and streaming results
-- [ ] 15 to 20 high-value sites with fixtures (Google, Apple, Microsoft, Amazon, GitHub, Adobe, Spotify, Twitter/X, Instagram, Discord, etc.)
-- [ ] CLI with table and JSON output
+- [x] `pkg/checker` engine with concurrency, timeouts, and streaming results
+- [x] 15 to 20 high-value sites with fixtures (Google, Apple, Microsoft, Amazon, GitHub, Adobe, Spotify, Twitter/X, Instagram, Discord, etc.)
+- [x] CLI with table and JSON output
 
 **v0.2: MCP**
-- [ ] `footprint-mcp` over stdio with all three tools
-- [ ] Delete and security URLs for every supported site
+- [x] `footprint-mcp` over stdio with all three tools
+- [x] Delete and security URLs for every supported site
 - [ ] GoReleaser + Homebrew tap
 
 **v0.3: TUI**

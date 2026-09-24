@@ -18,9 +18,9 @@ Items are grouped by the milestone they fit best. The last section holds items t
 - [ ] Retry `rate_limited` checks once, with jittered backoff per domain, before settling on the final status.
 - [ ] Add `footprint retry <report.json>`, which re-runs only the `rate_limited` and `error` rows from an earlier JSON report.
 - [x] Link breaches to found accounts. When a breach name matches a site that came back `found`, list that account first with a note to change the password and turn on 2FA, linking its `security_url`.
-- [ ] Run `govulncheck` in CI.
-- [ ] Sign release artifacts with cosign.
-- [ ] Make builds reproducible and document how to verify them.
+- [x] Run `govulncheck` in CI.
+- [x] Sign release artifacts with cosign (keyless, over `checksums.txt`).
+- [x] Make builds reproducible and document how to verify them.
 
 ## v0.3: TUI
 
@@ -33,7 +33,7 @@ Items are grouped by the milestone they fit best. The last section holds items t
 
 ## v0.4: 100+ sites
 
-- [ ] For each site, keep one canary address known to have an account and one random address known not to. The live job checks that the first returns `found` and the second `not_found`, which catches checks that break by always returning `not_found`.
+- [ ] (Live job supports one canary address via `FOOTPRINT_LIVE_CANARY_EMAIL`; per-site canaries still open.) For each site, keep one canary address known to have an account and one random address known not to. The live job checks that the first returns `found` and the second `not_found`, which catches checks that break by always returning `not_found`.
 - [ ] Record the date the live job last verified each site, and show it in `footprint sites`.
 
 ## Any time after v0.1
@@ -70,5 +70,5 @@ Follow-ups worth doing next:
 - [ ] A real Maltego transform server (local HTTP), beyond the import CSV.
 - [x] Audit key kept off the case directory (`FOOTPRINT_SIGN_KEY` or the user config dir, `footprint keygen`); `verify` trusts only `--pubkey` / the local public key, never the key inside the ledger; `--head` catches a truncated ledger.
 - [ ] Keep the audit signing key in the OS keychain or a hardware token instead of a file.
-- [ ] Wire `--proxy`, `--case-id`, and `--authority` into the `lookup` network calls' own client, and into the future MCP server.
-- [ ] CI: `go test -race`, `go vet`, `govulncheck`, and `gofmt` gate; GoReleaser with SBOM + cosign.
+- [ ] Wire `--proxy` into the `lookup` network calls' own client. (Done for the MCP server.)
+- [x] CI: `go test -race`, `go vet`, `govulncheck`, and `gofmt` gate; GoReleaser with SBOM + cosign.

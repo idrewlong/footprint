@@ -11,7 +11,7 @@ Design detail lives in `project-overview.md`. Follow that document when this fil
 - A breach check may report the names of known breaches that include the email. Do not return passwords, hashes, or other stolen values.
 - Password-reset checks are allowed. They may email the address being checked. Do not create an account.
 - Never report a miss when the real outcome is unknown. `rate_limited` and `error` stay distinct from `not_found`.
-- Do not copy Holehe modules. Use Holehe only as a list of sites worth covering. Each check is written from the site's own public behavior. License is undecided until the first release; copying Holehe code would force GPL-3.0.
+- Do not copy Holehe modules. Use Holehe only as a list of sites worth covering. Each check is written from the site's own public behavior. footprint is MIT-licensed and Holehe is GPL-3.0, so copying or translating Holehe code is not allowed.
 
 ## Layout
 

@@ -162,4 +162,10 @@ CI runs gofmt, `go mod tidy`, `go vet`, `go test -race`, `govulncheck`, and `gor
 
 ## Layout
 
-Site checks live in `pkg/sites/`, one file per site. The CLI (`cmd/footprint`) and the MCP server (`cmd/footprint-mcp`) call `pkg/checker` and renders results with `pkg/report`. Case files, the audit ledger, and `verify` live in `pkg/casefile`; the pivot graph and its exporters live in `pkg/graph`. Adding a site is described in `AGENTS.md`.
+Site checks live in `pkg/sites/`, one file per site. The CLI (`cmd/footprint`) and the MCP server (`cmd/footprint-mcp`) call `pkg/checker` and render results with `pkg/report`. Case files, the audit ledger, and `verify` live in `pkg/casefile`; the pivot graph and its exporters live in `pkg/graph`. Adding a site is described in `AGENTS.md`.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+Inspired by [Holehe](https://github.com/megadose/holehe) by megadose. footprint shares no code with it; each check is written from the site's own public behavior.

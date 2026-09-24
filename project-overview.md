@@ -262,10 +262,9 @@ go install github.com/idrewlong/footprint/cmd/...@latest
 
 ## License
 
-To be decided before the first release:
+MIT. See `LICENSE`.
 
-- **GPL-3.0**, if any site checks are translated from Holehe's modules (a derivative work must carry Holehe's license)
-- **MIT**, if every check is written independently from direct inspection of each site, using Holehe only as a reference for which sites to cover
+Every check is written independently from direct inspection of each site. Holehe is used only as a reference for which sites to cover. Holehe is GPL-3.0, so translating its modules would make footprint a derivative work under that license; that is why contributions must not copy or port Holehe code.
 
 ## Acknowledgments
 

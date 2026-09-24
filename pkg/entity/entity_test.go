@@ -44,6 +44,17 @@ func TestLoadSDNHeaderless(t *testing.T) {
 	}
 }
 
+func TestLoadSDNEmptyIsNotMissing(t *testing.T) {
+	records, err := LoadSDN(strings.NewReader(""))
+	if err != nil || records == nil || len(records) != 0 {
+		t.Fatalf("want non-nil empty slice: err=%v records=%#v", err, records)
+	}
+	row := Screen("Example Corp", records)
+	if row.Status != checker.StatusNotFound {
+		t.Fatalf("empty loaded list should be not_found, got %+v", row)
+	}
+}
+
 func TestMatchTickerExact(t *testing.T) {
 	tickers := []Ticker{{CIK: 320193, Ticker: "AAPL", Title: "Apple Inc."}}
 	hit := MatchTickers("aapl", tickers)

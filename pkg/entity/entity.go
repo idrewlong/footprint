@@ -59,7 +59,7 @@ func LoadSDN(r io.Reader) ([]Record, error) {
 		return nil, fmt.Errorf("read SDN csv: %w", err)
 	}
 	if len(rows) == 0 {
-		return nil, nil
+		return []Record{}, nil
 	}
 
 	nameIdx, typeIdx, progIdx := 1, 2, 3

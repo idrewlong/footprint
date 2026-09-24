@@ -21,6 +21,7 @@ func runUser(args []string, stdout, stderr io.Writer, catalog catalogFunc) int {
 		onlyFound   bool
 		asJSON      bool
 		asMarkdown  bool
+		proxyURL    string
 		concurrency int
 		timeout     time.Duration
 		categories  stringList
@@ -29,6 +30,7 @@ func runUser(args []string, stdout, stderr io.Writer, catalog catalogFunc) int {
 	fs.BoolVar(&onlyFound, "only-found", false, "omit non-hits from a JSON report")
 	fs.BoolVar(&asJSON, "json", false, "write JSON to stdout")
 	fs.BoolVar(&asMarkdown, "md", false, "write Markdown to stdout")
+	fs.StringVar(&proxyURL, "proxy", "", "route checks through a proxy (http, https, socks5, socks5h)")
 	fs.IntVar(&concurrency, "concurrency", checker.DefaultConcurrency, "parallel checks")
 	fs.DurationVar(&timeout, "timeout", checker.DefaultTimeout, "per-site timeout")
 	fs.Var(&categories, "category", "category to check")
@@ -45,6 +47,7 @@ func runUser(args []string, stdout, stderr io.Writer, catalog catalogFunc) int {
 		"timeout":     true,
 		"category":    true,
 		"site":        true,
+		"proxy":       true,
 	})
 	if splitErr != nil {
 		fmt.Fprintf(stderr, "footprint: %v\n", splitErr)
@@ -57,6 +60,12 @@ func runUser(args []string, stdout, stderr io.Writer, catalog catalogFunc) int {
 		fmt.Fprintln(stderr, "footprint: pass only one of --json or --md")
 		return 2
 	}
+	transport, proxyErr := proxyTransport(proxyURL)
+	if proxyErr != nil {
+		fmt.Fprintf(stderr, "footprint: %v\n", proxyErr)
+		return 2
+	}
+	defer transport.CloseIdleConnections()
 	if concurrency < 1 {
 		fmt.Fprintln(stderr, "footprint: --concurrency must be at least 1")
 		return 2
@@ -87,12 +96,13 @@ func runUser(args []string, stdout, stderr io.Writer, catalog catalogFunc) int {
 	prog.start()
 	start := time.Now()
 	var results []checker.Result
-	for res := range checker.Run(ctx, username, selected, checker.Options{Concurrency: concurrency, Timeout: timeout}) {
+	for res := range checker.Run(ctx, username, selected, checker.Options{Concurrency: concurrency, Timeout: timeout, Transport: transport}) {
 		results = append(results, res)
 		prog.add(res.Status)
 	}
 	prog.finish()
 	doc := report.BuildUser(username, results, onlyFound && asJSON)
+	report.ScoreConfidence(&doc)
 	elapsed := time.Since(start)
 	if human {
 		if err := report.WriteHuman(stdout, doc, elapsed, useColor(stdout)); err != nil {

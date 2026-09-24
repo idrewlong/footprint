@@ -204,11 +204,11 @@ func TestWriteMarkdown(t *testing.T) {
 	for _, want := range []string{
 		"**Bottom line:** 2 email matches and 1 breach for `me@example.com`, and 1 public profile for `me` (weaker than an email match; the username was taken from the mailbox). 2 checks were not completed.",
 		"## Findings",
-		"| Site | Method | Evidence |",
-		"| adobe | login | Sign-in lookup said this email is already registered. |",
-		"| zoom | register | Signup endpoint said this email is already registered. |",
-		"| xposedornot | breach | Breach list named Zoom and LinkedIn. |",
-		"| github | profile | Public profile exists for this username. Weaker than an email match: the username was taken from the mailbox. https://github.com/me |",
+		"| Site | Method | Confidence | Evidence |",
+		"| adobe | login | high | Sign-in lookup said this email is already registered. |",
+		"| zoom | register | high | Signup endpoint said this email is already registered. |",
+		"| xposedornot | breach | medium | Breach list named Zoom and LinkedIn. |",
+		"| github | profile | low | Public profile exists for this username. Weaker than an email match: the username was taken from the mailbox. https://github.com/me |",
 		"## Coverage",
 		"4 found, 1 not found, 1 rate limited, 1 error.",
 		"footprint v0.1.0 · 2026-09-23 18:32 UTC · 2.0s",
@@ -262,7 +262,7 @@ func TestWriteMarkdownUsernameOnly(t *testing.T) {
 	if !strings.Contains(out, "**Bottom line:** 1 public profile for `octocat`.") {
 		t.Fatalf("bottom line:\n%s", out)
 	}
-	if !strings.Contains(out, "| github | profile | Public profile exists for this username. https://github.com/octocat |") {
+	if !strings.Contains(out, "| github | profile | medium | Public profile exists for this username. https://github.com/octocat |") {
 		t.Fatalf("profile finding:\n%s", out)
 	}
 	if strings.Contains(out, "weaker than an email match") {
@@ -544,5 +544,34 @@ func TestIPPanelMissIsNotShownAsComplete(t *testing.T) {
 	}
 	if flags != "none in 8 published lists" {
 		t.Fatalf("flags=%q", flags)
+	}
+}
+
+func TestBreachTimelineOrdersByDate(t *testing.T) {
+	doc := Build("me@example.com", []checker.Result{
+		{Site: "leakcheck", Method: "breach", Status: checker.StatusFound, Detail: "Adobe, LinkedIn", Breaches: []checker.BreachHit{
+			{Name: "Adobe", Date: "2013-10"},
+			{Name: "LinkedIn", Date: "2012-05"},
+		}},
+		{Site: "hibp", Method: "breach", Status: checker.StatusFound, Detail: "Canva", Breaches: []checker.BreachHit{
+			{Name: "Canva"},
+		}},
+	}, false)
+	var md bytes.Buffer
+	if err := WriteMarkdown(&md, doc, Meta{Version: "dev"}); err != nil {
+		t.Fatal(err)
+	}
+	out := md.String()
+	if !strings.Contains(out, "## Breach timeline") {
+		t.Fatalf("no timeline:\n%s", out)
+	}
+	li := strings.Index(out, "2012-05 — LinkedIn")
+	ai := strings.Index(out, "2013-10 — Adobe")
+	ci := strings.Index(out, "date unknown — Canva")
+	if li < 0 || ai < 0 || ci < 0 {
+		t.Fatalf("timeline missing entries:\n%s", out)
+	}
+	if !(li < ai && ai < ci) {
+		t.Fatalf("timeline not ordered oldest-first then undated:\n%s", out)
 	}
 }

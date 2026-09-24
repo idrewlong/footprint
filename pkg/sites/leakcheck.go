@@ -26,8 +26,10 @@ func (leakcheck) Method() string   { return "breach" }
 
 func (s *leakcheck) Check(ctx context.Context, c *http.Client, email string) checker.Result {
 	start := time.Now()
-	status, detail := s.lookup(ctx, c, email)
-	return s.result(status, detail, time.Since(start))
+	status, detail, hits := s.lookup(ctx, c, email)
+	res := s.result(status, detail, time.Since(start))
+	res.Breaches = hits
+	return res
 }
 
 func (s *leakcheck) result(status checker.Status, detail string, elapsed time.Duration) checker.Result {
@@ -39,44 +41,64 @@ func (s *leakcheck) result(status checker.Status, detail string, elapsed time.Du
 	}.result(status, detail, elapsed)
 }
 
-func (s *leakcheck) lookup(ctx context.Context, c *http.Client, email string) (checker.Status, string) {
+func (s *leakcheck) lookup(ctx context.Context, c *http.Client, email string) (checker.Status, string, []checker.BreachHit) {
 	endpoint := "https://leakcheck.io/api/public?check=" + url.QueryEscape(email)
 	header := make(http.Header)
 	header.Set("Accept", "application/json")
 	status, _, body, err := get(ctx, c, endpoint, header)
 	if err != nil {
-		return fromErr(err)
+		st, detail := fromErr(err)
+		return st, detail, nil
 	}
 	if limited(status, body) {
-		return finishLimited()
+		st, detail := finishLimited()
+		return st, detail, nil
 	}
 	var resp struct {
 		Success bool   `json:"success"`
 		Error   string `json:"error"`
 		Sources []struct {
 			Name string `json:"name"`
+			Date string `json:"date"`
 		} `json:"sources"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return unexpected()
+		st, detail := unexpected()
+		return st, detail, nil
 	}
 	if !resp.Success && strings.EqualFold(resp.Error, "not found") {
-		return checker.StatusNotFound, ""
+		return checker.StatusNotFound, "", nil
 	}
 	if !resp.Success || status != http.StatusOK {
-		return unexpected()
+		st, detail := unexpected()
+		return st, detail, nil
 	}
-	names := uniqueNames(func() []string {
-		out := make([]string, 0, len(resp.Sources))
-		for _, source := range resp.Sources {
-			out = append(out, source.Name)
+	// Keep the earliest date seen for each named source. Dates are breach
+	// metadata, never a stolen value.
+	dateByName := map[string]string{}
+	var order []string
+	for _, source := range resp.Sources {
+		name := strings.TrimSpace(source.Name)
+		if name == "" {
+			continue
 		}
-		return out
-	}())
-	if len(names) == 0 {
-		return unexpected()
+		if _, ok := dateByName[name]; !ok {
+			order = append(order, name)
+		}
+		if cur := dateByName[name]; cur == "" || (source.Date != "" && source.Date < cur) {
+			dateByName[name] = strings.TrimSpace(source.Date)
+		}
 	}
-	return checker.StatusFound, strings.Join(names, ", ")
+	if len(order) == 0 {
+		st, detail := unexpected()
+		return st, detail, nil
+	}
+	sort.Strings(order)
+	hits := make([]checker.BreachHit, 0, len(order))
+	for _, name := range order {
+		hits = append(hits, checker.BreachHit{Name: name, Date: dateByName[name]})
+	}
+	return checker.StatusFound, strings.Join(order, ", "), hits
 }
 
 func uniqueNames(raw []string) []string {

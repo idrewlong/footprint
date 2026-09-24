@@ -158,6 +158,8 @@ func runLookupDomain(args []string, stdout, stderr io.Writer, deps lookupDeps) i
 		asMarkdown bool
 		save       bool
 		caseDir    string
+		caseID     string
+		authority  string
 		timeout    time.Duration
 	)
 	fs.BoolVar(&certs, "certs", false, "include crt.sh certificate count")
@@ -165,6 +167,8 @@ func runLookupDomain(args []string, stdout, stderr io.Writer, deps lookupDeps) i
 	fs.BoolVar(&asMarkdown, "md", false, "write Markdown to stdout")
 	fs.BoolVar(&save, "save", false, "write the report under the case directory")
 	fs.StringVar(&caseDir, "case-dir", "", "case directory")
+	fs.StringVar(&caseID, "case-id", "", "case identifier recorded with a saved report")
+	fs.StringVar(&authority, "authority", "", "legal authority recorded with a saved report")
 	fs.DurationVar(&timeout, "timeout", checker.DefaultTimeout, "lookup timeout")
 	fs.Usage = func() { fmt.Fprint(stderr, usage) }
 	flags, positionals, splitErr := splitArgs(args, map[string]bool{
@@ -175,8 +179,10 @@ func runLookupDomain(args []string, stdout, stderr io.Writer, deps lookupDeps) i
 		"h":     true,
 		"help":  true,
 	}, map[string]bool{
-		"case-dir": true,
-		"timeout":  true,
+		"case-dir":  true,
+		"case-id":   true,
+		"authority": true,
+		"timeout":   true,
 	})
 	if splitErr != nil {
 		fmt.Fprintf(stderr, "footprint: %v\n", splitErr)
@@ -234,7 +240,7 @@ func runLookupDomain(args []string, stdout, stderr io.Writer, deps lookupDeps) i
 	if err := writeReport(stdout, stderr, doc, asJSON, asMarkdown, start, elapsed); err != nil {
 		return 1
 	}
-	return maybeSave(stderr, save, caseDir, "domain", doc, start, elapsed)
+	return maybeSave(stderr, saveRequest{save: save, caseDir: caseDir, kind: "domain", caseID: caseID, authority: authority}, doc, start, elapsed)
 }
 
 func runLookupIP(args []string, stdout, stderr io.Writer, deps lookupDeps) int {
@@ -247,6 +253,8 @@ func runLookupIP(args []string, stdout, stderr io.Writer, deps lookupDeps) int {
 		asMarkdown bool
 		save       bool
 		caseDir    string
+		caseID     string
+		authority  string
 		timeout    time.Duration
 	)
 	fs.StringVar(&geoipPath, "geoip", "", "MaxMind GeoIP database path")
@@ -255,6 +263,8 @@ func runLookupIP(args []string, stdout, stderr io.Writer, deps lookupDeps) int {
 	fs.BoolVar(&asMarkdown, "md", false, "write Markdown to stdout")
 	fs.BoolVar(&save, "save", false, "write the report under the case directory")
 	fs.StringVar(&caseDir, "case-dir", "", "case directory")
+	fs.StringVar(&caseID, "case-id", "", "case identifier recorded with a saved report")
+	fs.StringVar(&authority, "authority", "", "legal authority recorded with a saved report")
 	fs.DurationVar(&timeout, "timeout", checker.DefaultTimeout, "lookup timeout")
 	fs.Usage = func() { fmt.Fprint(stderr, usage) }
 	flags, positionals, splitErr := splitArgs(args, map[string]bool{
@@ -265,9 +275,11 @@ func runLookupIP(args []string, stdout, stderr io.Writer, deps lookupDeps) int {
 		"h":         true,
 		"help":      true,
 	}, map[string]bool{
-		"geoip":    true,
-		"case-dir": true,
-		"timeout":  true,
+		"geoip":     true,
+		"case-dir":  true,
+		"case-id":   true,
+		"authority": true,
+		"timeout":   true,
 	})
 	if splitErr != nil {
 		fmt.Fprintf(stderr, "footprint: %v\n", splitErr)
@@ -337,7 +349,7 @@ func runLookupIP(args []string, stdout, stderr io.Writer, deps lookupDeps) int {
 	if err := writeReport(stdout, stderr, doc, asJSON, asMarkdown, start, elapsed); err != nil {
 		return 1
 	}
-	return maybeSave(stderr, save, caseDir, "infra", doc, start, elapsed)
+	return maybeSave(stderr, saveRequest{save: save, caseDir: caseDir, kind: "infra", caseID: caseID, authority: authority}, doc, start, elapsed)
 }
 
 func runLookupEntity(args []string, stdout, stderr io.Writer, deps lookupDeps) int {
@@ -349,6 +361,8 @@ func runLookupEntity(args []string, stdout, stderr io.Writer, deps lookupDeps) i
 		asMarkdown bool
 		save       bool
 		caseDir    string
+		caseID     string
+		authority  string
 		timeout    time.Duration
 	)
 	fs.StringVar(&sdnPath, "sdn", "", "local OFAC SDN CSV path")
@@ -356,6 +370,8 @@ func runLookupEntity(args []string, stdout, stderr io.Writer, deps lookupDeps) i
 	fs.BoolVar(&asMarkdown, "md", false, "write Markdown to stdout")
 	fs.BoolVar(&save, "save", false, "write the report under the case directory")
 	fs.StringVar(&caseDir, "case-dir", "", "case directory")
+	fs.StringVar(&caseID, "case-id", "", "case identifier recorded with a saved report")
+	fs.StringVar(&authority, "authority", "", "legal authority recorded with a saved report")
 	fs.DurationVar(&timeout, "timeout", checker.DefaultTimeout, "lookup timeout")
 	fs.Usage = func() { fmt.Fprint(stderr, usage) }
 	flags, positionals, splitErr := splitArgs(args, map[string]bool{
@@ -365,9 +381,11 @@ func runLookupEntity(args []string, stdout, stderr io.Writer, deps lookupDeps) i
 		"h":    true,
 		"help": true,
 	}, map[string]bool{
-		"sdn":      true,
-		"case-dir": true,
-		"timeout":  true,
+		"sdn":       true,
+		"case-dir":  true,
+		"case-id":   true,
+		"authority": true,
+		"timeout":   true,
 	})
 	if splitErr != nil {
 		fmt.Fprintf(stderr, "footprint: %v\n", splitErr)
@@ -454,5 +472,5 @@ func runLookupEntity(args []string, stdout, stderr io.Writer, deps lookupDeps) i
 	if err := writeReport(stdout, stderr, doc, asJSON, asMarkdown, start, elapsed); err != nil {
 		return 1
 	}
-	return maybeSave(stderr, save, caseDir, "entity", doc, start, elapsed)
+	return maybeSave(stderr, saveRequest{save: save, caseDir: caseDir, kind: "entity", caseID: caseID, authority: authority}, doc, start, elapsed)
 }

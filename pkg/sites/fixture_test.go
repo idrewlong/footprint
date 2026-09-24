@@ -287,3 +287,23 @@ func writeRaw(w http.ResponseWriter, raw string) {
 	w.WriteHeader(status)
 	_, _ = io.WriteString(w, body)
 }
+
+func TestLeakCheckCapturesDates(t *testing.T) {
+	res := checkRaw(t, "leakcheck", "HTTP/1.1 200 OK\nContent-Type: application/json\n\n{\"success\":true,\"sources\":[{\"name\":\"LinkedIn\",\"date\":\"2012-05\"},{\"name\":\"Adobe\",\"date\":\"2013-10\"}]}\n")
+	if res.Status != checker.StatusFound {
+		t.Fatalf("status %s", res.Status)
+	}
+	if len(res.Breaches) != 2 {
+		t.Fatalf("breaches: %+v", res.Breaches)
+	}
+	got := map[string]string{}
+	for _, h := range res.Breaches {
+		got[h.Name] = h.Date
+		if strings.Contains(strings.ToLower(h.Name), "password") || strings.Contains(h.Date, "secret") {
+			t.Fatalf("secret leaked into breach hit %+v", h)
+		}
+	}
+	if got["LinkedIn"] != "2012-05" || got["Adobe"] != "2013-10" {
+		t.Fatalf("dates not captured: %+v", got)
+	}
+}

@@ -137,6 +137,50 @@ func TestScanJSONOnlyFound(t *testing.T) {
 	}
 }
 
+func TestScanSkipsNotifyByDefault(t *testing.T) {
+	catalog := func(categories, names []string) ([]checker.Site, error) {
+		return []checker.Site{
+			fakeSite{name: "alpha", domain: "alpha.example", category: "dev", method: "register", status: checker.StatusNotFound},
+			fakeSite{name: "resetful", domain: "reset.example", category: "dev", method: "password_reset", status: checker.StatusFound},
+		}, nil
+	}
+	var stdout, stderr bytes.Buffer
+	code := executeCatalog([]string{"scan", "--json", "me@example.com"}, &stdout, &stderr, catalog)
+	if code != 0 {
+		t.Fatalf("code %d stderr %s", code, stderr.String())
+	}
+	out := stdout.String()
+	if strings.Contains(out, `"site": "resetful"`) {
+		t.Fatalf("password_reset check ran without opt-in:\n%s", out)
+	}
+	if !strings.Contains(stderr.String(), "--allow-notify") || !strings.Contains(stderr.String(), "resetful") {
+		t.Fatalf("stderr did not name the skipped check:\n%s", stderr.String())
+	}
+	// The skipped check must not be counted as a real status.
+	if !strings.Contains(out, `"not_found": 1`) || strings.Contains(out, `"found": 1`) {
+		t.Fatalf("summary counted a check that did not run:\n%s", out)
+	}
+}
+
+func TestScanAllowNotifyRunsResetCheck(t *testing.T) {
+	catalog := func(categories, names []string) ([]checker.Site, error) {
+		return []checker.Site{
+			fakeSite{name: "resetful", domain: "reset.example", category: "dev", method: "password_reset", status: checker.StatusFound},
+		}, nil
+	}
+	var stdout, stderr bytes.Buffer
+	code := executeCatalog([]string{"scan", "--json", "--allow-notify", "me@example.com"}, &stdout, &stderr, catalog)
+	if code != 0 {
+		t.Fatalf("code %d stderr %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"site": "resetful"`) {
+		t.Fatalf("opt-in did not run the check:\n%s", stdout.String())
+	}
+	if strings.Contains(stderr.String(), "--allow-notify") {
+		t.Fatalf("stderr warned despite opt-in:\n%s", stderr.String())
+	}
+}
+
 func TestScanPrintsRows(t *testing.T) {
 	catalog := func(categories, names []string) ([]checker.Site, error) {
 		return []checker.Site{
@@ -269,7 +313,7 @@ func TestScanMarkdownListsEveryStatus(t *testing.T) {
 	for _, want := range []string{
 		"**Bottom line:**",
 		"## Findings",
-		"| alpha | register | Signup endpoint said this email is already registered. |",
+		"| alpha | register | high | Signup endpoint said this email is already registered. |",
 		"## Coverage",
 		"## Actions",
 		"https://example.com/security",
@@ -677,7 +721,7 @@ func TestScanSaveCaseFile(t *testing.T) {
 	}
 	dir := t.TempDir()
 	var stdout, stderr bytes.Buffer
-	code := executeCatalog([]string{"scan", "email", "me@example.com", "--save", "--case-dir", dir}, &stdout, &stderr, catalog)
+	code := executeCatalog([]string{"scan", "email", "me@example.com", "--save", "--case-dir", dir, "--case-id", "CASE-1", "--authority", "test warrant"}, &stdout, &stderr, catalog)
 	if code != 0 {
 		t.Fatalf("code %d stderr %s", code, stderr.String())
 	}
@@ -691,15 +735,84 @@ func TestScanSaveCaseFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 1 {
-		t.Fatalf("files in case dir: %d", len(entries))
+	var jsonFiles int
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		jsonFiles++
+		info, err := e.Info()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != 0o600 {
+			t.Fatalf("mode %04o, want 0600", info.Mode().Perm())
+		}
 	}
-	info, err := entries[0].Info()
-	if err != nil {
+	if jsonFiles != 1 {
+		t.Fatalf("case files saved: %d", jsonFiles)
+	}
+	// The saved case must verify against its own signed audit ledger.
+	var vout, verr bytes.Buffer
+	if code := execute([]string{"verify", "--case-dir", dir}, &vout, &verr); code != 0 {
+		t.Fatalf("verify code %d: %s%s", code, vout.String(), verr.String())
+	}
+	if !strings.Contains(vout.String(), "OK:") {
+		t.Fatalf("verify did not pass:\n%s", vout.String())
+	}
+}
+
+func TestScanSaveRequiresPurposeFields(t *testing.T) {
+	catalog := func(categories, names []string) ([]checker.Site, error) {
+		return []checker.Site{
+			fakeSite{name: "alpha", domain: "alpha.example", category: "dev", method: "register", status: checker.StatusFound},
+		}, nil
+	}
+	dir := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	code := executeCatalog([]string{"scan", "email", "me@example.com", "--save", "--case-dir", dir}, &stdout, &stderr, catalog)
+	if code == 0 {
+		t.Fatal("save without case-id/authority was allowed")
+	}
+	if !strings.Contains(stderr.String(), "--case-id") || !strings.Contains(stderr.String(), "--authority") {
+		t.Fatalf("error did not name the required flags:\n%s", stderr.String())
+	}
+	if files, _ := os.ReadDir(dir); len(files) != 0 {
+		t.Fatalf("a rejected save still wrote %d file(s)", len(files))
+	}
+}
+
+func TestVerifyDetectsTampering(t *testing.T) {
+	catalog := func(categories, names []string) ([]checker.Site, error) {
+		return []checker.Site{
+			fakeSite{name: "alpha", domain: "alpha.example", category: "dev", method: "register", status: checker.StatusFound},
+		}, nil
+	}
+	dir := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	if code := executeCatalog([]string{"scan", "email", "me@example.com", "--save", "--case-dir", dir, "--case-id", "CASE-9", "--authority", "warrant"}, &stdout, &stderr, catalog); code != 0 {
+		t.Fatalf("save failed: %s", stderr.String())
+	}
+	// Alter a saved case file after the fact.
+	entries, _ := os.ReadDir(dir)
+	var caseFile string
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".json") {
+			caseFile = filepath.Join(dir, e.Name())
+		}
+	}
+	if caseFile == "" {
+		t.Fatal("no case file saved")
+	}
+	if err := os.WriteFile(caseFile, []byte(`{"report":{"email":"altered@example.com"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("mode %04o, want 0600", info.Mode().Perm())
+	var vout, verr bytes.Buffer
+	if code := execute([]string{"verify", "--case-dir", dir}, &vout, &verr); code == 0 {
+		t.Fatalf("verify passed on a tampered file:\n%s", vout.String())
+	}
+	if !strings.Contains(vout.String(), "modified") {
+		t.Fatalf("verify did not flag the modification:\n%s", vout.String())
 	}
 }
 
@@ -791,5 +904,36 @@ func writeSaved(t *testing.T, path string, saved casefile.Saved) {
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(saved); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestScanBatchEmailsJSON(t *testing.T) {
+	catalog := func(categories, names []string) ([]checker.Site, error) {
+		return []checker.Site{
+			fakeSite{name: "alpha", domain: "alpha.example", category: "dev", method: "register", status: checker.StatusFound},
+		}, nil
+	}
+	dir := t.TempDir()
+	listPath := filepath.Join(dir, "emails.txt")
+	if err := os.WriteFile(listPath, []byte("# subjects\na@example.com\nnot-an-email\nb@example.com\na@example.com\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := executeCatalog([]string{"scan", "email", "--batch", listPath, "--json"}, &stdout, &stderr, catalog)
+	if code != 0 {
+		t.Fatalf("code %d stderr %s", code, stderr.String())
+	}
+	var docs []report.Document
+	if err := json.Unmarshal(stdout.Bytes(), &docs); err != nil {
+		t.Fatalf("batch json not an array: %v\n%s", err, stdout.String())
+	}
+	if len(docs) != 2 {
+		t.Fatalf("want 2 documents (dedup + skip invalid), got %d", len(docs))
+	}
+	if docs[0].Email != "a@example.com" || docs[1].Email != "b@example.com" {
+		t.Fatalf("subjects: %q, %q", docs[0].Email, docs[1].Email)
+	}
+	if !strings.Contains(stderr.String(), "skipping invalid email") {
+		t.Fatalf("stderr did not flag the invalid line:\n%s", stderr.String())
 	}
 }

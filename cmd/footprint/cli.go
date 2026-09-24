@@ -3,10 +3,13 @@ package main
 import (
 	"fmt"
 	"io"
+	"net/http"
+	"os"
 	"runtime/debug"
 	"strings"
 	"time"
 
+	"github.com/idrewlong/footprint/internal/httpx"
 	"github.com/idrewlong/footprint/pkg/casefile"
 	"github.com/idrewlong/footprint/pkg/checker"
 	"github.com/idrewlong/footprint/pkg/profiles"
@@ -41,8 +44,16 @@ Usage:
   footprint lookup entity <name> --sdn path [--timeout 10s] [--json|--md] [--save] [--case-dir path]
   footprint diff <old.json> <new.json>
   footprint note <report.json>... [--json|--md]
+  footprint verify [case-dir] [--case-dir path]
+  footprint export <case.json>... --format graphml|neo4j|stix|misp|maltego [--out file]
+
+Scans are passive by default: no check emails or otherwise alerts the address.
+Password-reset checks, which can email the target, run only with --allow-notify.
 
 Scan and user flags:
+  --allow-notify      include checks that email the target (password reset)
+  --proxy url         route checks through http, https, socks5, or socks5h
+  --batch file        scan many subjects: footprint scan email --batch list.txt
   --only-found        omit non-hits from a JSON report
   --json              write a JSON report to stdout
   --md                write a Markdown report to stdout
@@ -52,6 +63,11 @@ Scan and user flags:
   --site name         check these sites (repeatable, or comma-separated)
   --save              write the report under the case directory
   --case-dir path     case directory (default ~/.local/share/footprint)
+  --case-id id        case identifier recorded with a saved report (required with --save)
+  --authority text    legal authority recorded with a saved report (required with --save)
+
+A saved report is logged to a signed, append-only audit ledger in the case
+directory. 'footprint verify' re-checks that ledger and the saved files.
 
 Sites flags:
   --category name     list one category
@@ -118,6 +134,10 @@ func runCommand(args []string, stdout, stderr io.Writer, catalog, profilesCatalo
 		return runDiff(args[1:], stdout, stderr)
 	case "note":
 		return runNote(args[1:], stdout, stderr)
+	case "verify":
+		return runVerify(args[1:], stdout, stderr)
+	case "export":
+		return runExport(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n\n%s", args[0], usage)
 		return 2
@@ -130,6 +150,36 @@ func toolVersion() string {
 		return "dev"
 	}
 	return info.Main.Version
+}
+
+// splitNotify partitions sites into passive checks and alerting checks
+// (those whose method can email the target). The scan runs passive checks
+// always and alerting ones only when the operator opts in.
+func splitNotify(all []checker.Site) (passive, alerting []checker.Site) {
+	for _, site := range all {
+		if checker.Notifies(site.Method()) {
+			alerting = append(alerting, site)
+		} else {
+			passive = append(passive, site)
+		}
+	}
+	return passive, alerting
+}
+
+// proxyTransport builds a shared transport for a scan. An empty proxy uses a
+// direct transport. A bad proxy is a usage error so traffic never silently
+// falls back to the operator's own IP. The caller closes idle connections.
+func proxyTransport(proxyURL string) (*http.Transport, error) {
+	return httpx.NewTransportProxy(proxyURL)
+}
+
+// notifyNames lists site names for a stderr note.
+func notifyNames(sites []checker.Site) string {
+	names := make([]string, 0, len(sites))
+	for _, site := range sites {
+		names = append(names, site.Name())
+	}
+	return strings.Join(names, ", ")
 }
 
 func counted(n int, one, many string) string {
@@ -160,11 +210,28 @@ func writeReport(stdout, stderr io.Writer, doc report.Document, asJSON, asMarkdo
 	return writeErr
 }
 
-func maybeSave(stderr io.Writer, save bool, caseDir, kind string, doc report.Document, start time.Time, elapsed time.Duration) int {
-	if !save {
+// saveRequest carries everything a --save needs, including the purpose
+// fields that tie the saved case to a documented authority.
+type saveRequest struct {
+	save      bool
+	caseDir   string
+	kind      string
+	caseID    string
+	authority string
+}
+
+func maybeSave(stderr io.Writer, req saveRequest, doc report.Document, start time.Time, elapsed time.Duration) int {
+	if !req.save {
 		return 0
 	}
-	dir := caseDir
+	// A saved case is an investigative record, so it must carry the case it
+	// belongs to and the authority for the lookup. Unsaved runs are not
+	// gated; only the durable record requires them.
+	if strings.TrimSpace(req.caseID) == "" || strings.TrimSpace(req.authority) == "" {
+		fmt.Fprintln(stderr, "footprint: --save requires --case-id and --authority")
+		return 2
+	}
+	dir := req.caseDir
 	if dir == "" {
 		var err error
 		dir, err = casefile.DefaultDir()
@@ -177,7 +244,10 @@ func maybeSave(stderr io.Writer, save bool, caseDir, kind string, doc report.Doc
 		Version:   toolVersion(),
 		RanAt:     start,
 		ElapsedMS: elapsed.Milliseconds(),
-		Kind:      kind,
+		Kind:      req.kind,
+		CaseID:    strings.TrimSpace(req.caseID),
+		Authority: strings.TrimSpace(req.authority),
+		Operator:  operator(),
 		Report:    doc,
 	})
 	if err != nil {
@@ -186,6 +256,17 @@ func maybeSave(stderr io.Writer, save bool, caseDir, kind string, doc report.Doc
 	}
 	fmt.Fprintf(stderr, "saved %s\n", path)
 	return 0
+}
+
+// operator names who ran the tool, for the audit log. It reads the login
+// name from the environment and is best-effort: an empty value is fine.
+func operator() string {
+	for _, key := range []string{"FOOTPRINT_OPERATOR", "USER", "LOGNAME"} {
+		if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // splitArgs lets flags follow the email, which is how the documented

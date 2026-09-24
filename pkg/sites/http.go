@@ -76,6 +76,20 @@ func breachEvidence(detail string) string {
 	}
 }
 
+// breachHitsFromNames turns a comma-separated breach-name detail into
+// structured hits with no dates. It is for breach sources that report names
+// only. An empty or whitespace name is dropped.
+func breachHitsFromNames(detail string) []checker.BreachHit {
+	var hits []checker.BreachHit
+	for _, name := range strings.Split(detail, ",") {
+		name = strings.TrimSpace(name)
+		if name != "" {
+			hits = append(hits, checker.BreachHit{Name: name})
+		}
+	}
+	return hits
+}
+
 func humanList(names []string) string {
 	if len(names) == 2 {
 		return names[0] + " and " + names[1]

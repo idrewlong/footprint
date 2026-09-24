@@ -162,3 +162,47 @@ func TestGateSkipsSecondRequest(t *testing.T) {
 		t.Fatalf("server hits = %d, want 1", hits.Load())
 	}
 }
+
+func TestNewTransportProxyEmptyIsDirect(t *testing.T) {
+	tr, err := NewTransportProxy("")
+	if err != nil {
+		t.Fatalf("empty proxy: %v", err)
+	}
+	if tr == nil {
+		t.Fatal("nil transport")
+	}
+}
+
+func TestNewTransportProxyHTTP(t *testing.T) {
+	tr, err := NewTransportProxy("http://127.0.0.1:8080")
+	if err != nil {
+		t.Fatalf("http proxy: %v", err)
+	}
+	if tr.Proxy == nil {
+		t.Fatal("http proxy did not set Proxy")
+	}
+	req, _ := http.NewRequest(http.MethodGet, "https://example.com/", nil)
+	u, err := tr.Proxy(req)
+	if err != nil || u == nil || u.Host != "127.0.0.1:8080" {
+		t.Fatalf("proxy url = %v, %v", u, err)
+	}
+}
+
+func TestNewTransportProxySOCKS5(t *testing.T) {
+	tr, err := NewTransportProxy("socks5h://127.0.0.1:9050")
+	if err != nil {
+		t.Fatalf("socks5h proxy: %v", err)
+	}
+	if tr.DialContext == nil {
+		t.Fatal("socks5 proxy did not set DialContext")
+	}
+	if tr.Proxy != nil {
+		t.Fatal("socks5 proxy must clear the HTTP proxy")
+	}
+}
+
+func TestNewTransportProxyRejectsUnknownScheme(t *testing.T) {
+	if _, err := NewTransportProxy("ftp://127.0.0.1:21"); err == nil {
+		t.Fatal("unsupported scheme was accepted")
+	}
+}

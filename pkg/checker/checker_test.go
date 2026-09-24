@@ -210,3 +210,38 @@ func TestRunDoesNotBlockWhenCallerStopsReading(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 }
+
+func TestNotifies(t *testing.T) {
+	if !Notifies(MethodPasswordReset) {
+		t.Fatal("password_reset must be an alerting method")
+	}
+	for _, m := range []string{"register", "login", "breach", "profile", ""} {
+		if Notifies(m) {
+			t.Fatalf("%q must be passive", m)
+		}
+	}
+}
+
+func TestConfidence(t *testing.T) {
+	cases := []struct {
+		method      string
+		status      Status
+		fromMailbox bool
+		want        string
+	}{
+		{"register", StatusFound, false, ConfidenceHigh},
+		{"login", StatusFound, false, ConfidenceHigh},
+		{MethodPasswordReset, StatusFound, false, ConfidenceHigh},
+		{"breach", StatusFound, false, ConfidenceMedium},
+		{"profile", StatusFound, false, ConfidenceMedium},
+		{"profile", StatusFound, true, ConfidenceLow},
+		{"register", StatusNotFound, false, ""},
+		{"profile", StatusRateLimited, true, ""},
+		{"dns", StatusFound, false, ""},
+	}
+	for _, c := range cases {
+		if got := Confidence(c.method, c.status, c.fromMailbox); got != c.want {
+			t.Errorf("Confidence(%q,%q,%v) = %q, want %q", c.method, c.status, c.fromMailbox, got, c.want)
+		}
+	}
+}

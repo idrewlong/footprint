@@ -65,6 +65,20 @@ func BuildUser(username string, results []checker.Result, onlyFound bool) Docume
 	return doc
 }
 
+// ScoreConfidence stamps a confidence level on every found row in the
+// document, using whether a profile username came from the mailbox. It is
+// idempotent and safe to call before rendering or saving.
+func ScoreConfidence(doc *Document) {
+	if doc == nil {
+		return
+	}
+	fromMailbox := usernameFromMailbox(doc.Email, doc.Username)
+	for i := range doc.Results {
+		doc.Results[i].Confidence = checker.Confidence(
+			doc.Results[i].Method, doc.Results[i].Status, fromMailbox)
+	}
+}
+
 // Summarize counts statuses. An unrecognized status is an error so it
 // cannot disappear from the totals.
 func Summarize(results []checker.Result) Summary {
@@ -390,6 +404,7 @@ func WriteMarkdown(w io.Writer, doc Document, meta Meta) error {
 	b.WriteString("# Footprint\n\n")
 	fmt.Fprintf(&b, "**Bottom line:** %s\n\n", bottomLine(doc))
 	writeFindings(&b, doc)
+	writeBreachTimeline(&b, doc)
 	writeGrouped(&b, doc, "dns", "Domain")
 	if rows := ipPanel(doc.IP); len(rows) > 0 {
 		writeIPTable(&b, rows, doc.IP)
@@ -401,6 +416,68 @@ func WriteMarkdown(w io.Writer, doc Document, meta Meta) error {
 	writeActions(&b, doc)
 	_, err := io.WriteString(w, b.String())
 	return err
+}
+
+// writeBreachTimeline lists breaches oldest first when any breach hit
+// carries a date. Dates are breach metadata, not stolen values. Breaches
+// with no date follow the dated ones. Nothing is written when no breach
+// carried a date, since an unordered list adds nothing over the findings.
+func writeBreachTimeline(b *strings.Builder, doc Document) {
+	type hit struct{ name, date string }
+	byName := map[string]hit{}
+	var order []string
+	anyDate := false
+	for _, res := range doc.Results {
+		if res.Status != checker.StatusFound || res.Method != "breach" {
+			continue
+		}
+		for _, h := range res.Breaches {
+			name := strings.TrimSpace(h.Name)
+			if name == "" {
+				continue
+			}
+			key := normalizeName(name)
+			existing, ok := byName[key]
+			if !ok {
+				order = append(order, key)
+				byName[key] = hit{name: name, date: strings.TrimSpace(h.Date)}
+			} else if existing.date == "" && strings.TrimSpace(h.Date) != "" {
+				existing.date = strings.TrimSpace(h.Date)
+				byName[key] = existing
+			}
+			if strings.TrimSpace(h.Date) != "" {
+				anyDate = true
+			}
+		}
+	}
+	if !anyDate {
+		return
+	}
+	hits := make([]hit, 0, len(order))
+	for _, key := range order {
+		hits = append(hits, byName[key])
+	}
+	// Dated first, ascending by the source's date string (YYYY-MM sorts
+	// correctly as text); undated last, by name.
+	sort.SliceStable(hits, func(i, j int) bool {
+		di, dj := hits[i].date, hits[j].date
+		if (di == "") != (dj == "") {
+			return di != ""
+		}
+		if di != dj {
+			return di < dj
+		}
+		return hits[i].name < hits[j].name
+	})
+	b.WriteString("## Breach timeline\n\n")
+	for _, h := range hits {
+		when := h.date
+		if when == "" {
+			when = "date unknown"
+		}
+		fmt.Fprintf(b, "- %s — %s\n", when, mdCell(h.name))
+	}
+	b.WriteString("\n")
 }
 
 func bottomLine(doc Document) string {
@@ -508,11 +585,20 @@ func writeFindings(b *strings.Builder, doc Document) {
 		}
 		return found[i].Site < found[j].Site
 	})
-	b.WriteString("| Site | Method | Evidence |\n| --- | --- | --- |\n")
+	b.WriteString("| Site | Method | Confidence | Evidence |\n| --- | --- | --- | --- |\n")
 	for _, res := range found {
-		fmt.Fprintf(b, "| %s | %s | %s |\n", mdCell(res.Site), mdCell(res.Method), mdCell(findingEvidence(res, fromMailbox)))
+		fmt.Fprintf(b, "| %s | %s | %s | %s |\n", mdCell(res.Site), mdCell(res.Method), mdCell(confidenceLabel(res, fromMailbox)), mdCell(findingEvidence(res, fromMailbox)))
 	}
 	b.WriteString("\n")
+}
+
+// confidenceLabel is the level for a row, computed on demand so markdown
+// rendering does not depend on ScoreConfidence having been called first.
+func confidenceLabel(res checker.Result, fromMailbox bool) string {
+	if res.Confidence != "" {
+		return res.Confidence
+	}
+	return checker.Confidence(res.Method, res.Status, fromMailbox)
 }
 
 func writeGrouped(b *strings.Builder, doc Document, method, title string) {

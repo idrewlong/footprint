@@ -20,7 +20,28 @@ type Saved struct {
 	RanAt     time.Time       `json:"ran_at"`
 	ElapsedMS int64           `json:"elapsed_ms"`
 	Kind      string          `json:"kind"`
+	CaseID    string          `json:"case_id,omitempty"`
+	Authority string          `json:"authority,omitempty"`
+	Operator  string          `json:"operator,omitempty"`
 	Report    report.Document `json:"report"`
+}
+
+// Subject returns the raw subject a document is about, for the audit log.
+func Subject(doc report.Document) string {
+	switch {
+	case doc.Email != "":
+		return doc.Email
+	case doc.Username != "":
+		return doc.Username
+	case doc.SubjectDomain != "":
+		return doc.SubjectDomain
+	case doc.SubjectIP != "":
+		return doc.SubjectIP
+	case doc.SubjectEntity != "":
+		return doc.SubjectEntity
+	default:
+		return ""
+	}
 }
 
 // DefaultDir is ~/.local/share/footprint.
@@ -51,6 +72,13 @@ func Save(dir string, saved Saved) (string, error) {
 	}
 	if err := f.Close(); err != nil {
 		return "", fmt.Errorf("casefile: close: %w", err)
+	}
+	// Record the save in the tamper-evident audit ledger. A failure here
+	// removes the just-written file so the ledger and the directory never
+	// disagree about what was saved.
+	if _, err := appendLedger(dir, path, saved); err != nil {
+		os.Remove(path)
+		return "", err
 	}
 	return path, nil
 }

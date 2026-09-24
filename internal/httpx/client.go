@@ -5,13 +5,17 @@ package httpx
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"math/rand/v2"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/net/proxy"
 )
 
 // browser is one desktop browser identity. Chromium browsers send client
@@ -100,6 +104,49 @@ func NewTransport() *http.Transport {
 		return transport.Clone()
 	}
 	return &http.Transport{Proxy: http.ProxyFromEnvironment, ForceAttemptHTTP2: true}
+}
+
+// NewTransportProxy returns a transport that sends every request through
+// proxyURL. It supports http, https, socks5, and socks5h. socks5h keeps DNS
+// resolution at the proxy, which an investigator wants so the resolver does
+// not leak the target: for Tor, pass socks5h://127.0.0.1:9050. An empty
+// proxyURL returns the default transport. A scheme it cannot use is an error,
+// so a misconfigured proxy fails loudly rather than sending traffic direct.
+func NewTransportProxy(proxyURL string) (*http.Transport, error) {
+	if strings.TrimSpace(proxyURL) == "" {
+		return NewTransport(), nil
+	}
+	u, err := url.Parse(strings.TrimSpace(proxyURL))
+	if err != nil {
+		return nil, fmt.Errorf("proxy url: %w", err)
+	}
+	transport := NewTransport()
+	switch strings.ToLower(u.Scheme) {
+	case "http", "https":
+		transport.Proxy = http.ProxyURL(u)
+		return transport, nil
+	case "socks5", "socks5h":
+		var auth *proxy.Auth
+		if u.User != nil {
+			pass, _ := u.User.Password()
+			auth = &proxy.Auth{User: u.User.Username(), Password: pass}
+		}
+		dialer, err := proxy.SOCKS5("tcp", u.Host, auth, proxy.Direct)
+		if err != nil {
+			return nil, fmt.Errorf("proxy dialer: %w", err)
+		}
+		ctxDialer, ok := dialer.(proxy.ContextDialer)
+		if !ok {
+			return nil, fmt.Errorf("proxy: dialer lacks context support")
+		}
+		// A SOCKS transport must not also carry an HTTP proxy from the
+		// environment, and the SOCKS dialer already tunnels the connection.
+		transport.Proxy = nil
+		transport.DialContext = ctxDialer.DialContext
+		return transport, nil
+	default:
+		return nil, fmt.Errorf("proxy: unsupported scheme %q (use http, https, socks5, or socks5h)", u.Scheme)
+	}
 }
 
 // NewClient returns a client that does not follow redirects.

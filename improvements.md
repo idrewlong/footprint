@@ -9,9 +9,9 @@ Items are grouped by the milestone they fit best. The last section holds items t
 - [ ] Make a first commit so CI and GoReleaser have history to work from.
 - [ ] Update `project-overview.md` to cover `pkg/profiles`, the `footprint user` command, and the `breach` method.
 - [ ] List all four methods (`register`, `login`, `password_reset`, `breach`) in the comment on `Result.Method`.
-- [ ] Resolve the policy conflict. Step 5 of the overview's "Contributing a site" rejects checks that notify the account owner. `AGENTS.md` allows password-reset checks that email the address. Pick one rule and update both files.
+- [x] Resolve the policy conflict. Scans are now passive by default: password-reset (notifying) checks run only with `--allow-notify` (`checker.Notifies`, gated in the CLI). Still to do: reconcile the wording in `project-overview.md` step 5 and `AGENTS.md`.
 - [x] Add an `Evidence` field to `Result` that records the signal a check relied on, such as "signup endpoint said 'email already in use'". Fill it in for every existing site and fixture test.
-- [ ] Add a `--quiet` flag that skips checks that email the target, which are the `password_reset` methods.
+- [x] Skip checks that email the target by default (the `password_reset` methods); include them only with `--allow-notify`. (supersedes the proposed opt-out `--quiet`)
 
 ## v0.2: MCP
 
@@ -43,10 +43,31 @@ Scan controls and privacy:
 - [ ] Add a `--redact` flag that masks the email in `--json` and `--md` output for sharing.
 - [ ] Write report files with 0600 permissions.
 - [ ] Read API keys such as `HIBP_API_KEY` from a config file or the OS keychain, in addition to environment variables.
-- [ ] Add a `--proxy` flag for SOCKS5 and HTTP proxies. Requests still go only to the site being checked.
+- [x] Add a `--proxy` flag for SOCKS5 and HTTP proxies. Requests still go only to the site being checked. (also socks5h for Tor)
 
 Coverage without new site checks:
 
 - [ ] Check the email's domain locally: MX records, SPF and DMARC policy, and whether it is a disposable-email provider. These are DNS lookups only, and the email itself is never sent.
-- [ ] Accept several addresses in one run (`--email a@x --email b@y`) and merge them into one report.
+- [x] Accept many subjects in one run via `--batch <file>`, scanned together. (per-subject reports; JSON is an array)
 - [x] Mark profile hits that came from the mailbox name in an email scan, since they are weaker evidence than an email match.
+
+## Investigative suite (built on the `investigative-suite` branch)
+
+Landed, each with tests:
+
+- [x] Passive by default. `--allow-notify` gates password-reset checks (`checker.Notifies`).
+- [x] Confidence per finding: `high`/`medium`/`low` on every found row (`checker.Confidence`, in JSON and the Markdown findings table).
+- [x] Breach timeline. `checker.BreachHit{Name,Date}` on results; leakcheck captures dates; the case note lists breaches oldest first. No stolen values.
+- [x] `--proxy` for http/https/socks5/socks5h (Tor via `socks5h://127.0.0.1:9050`); a bad proxy is a hard error.
+- [x] Purpose logging. `--case-id` and `--authority` required with `--save`; operator captured from the environment.
+- [x] Evidence integrity. Signed (Ed25519), hash-chained, append-only audit ledger per case directory; `footprint verify` re-checks files, chain, and signatures.
+- [x] `--batch <file>` scans many subjects in one run.
+- [x] `footprint export` builds a pivot graph (`pkg/graph`) and writes GraphML, Neo4j JSON, STIX 2.1, MISP, and Maltego CSV.
+
+Follow-ups worth doing next:
+
+- [ ] Capture a per-result SHA-256 of the raw HTTP response at the `httpx` layer (the hash reveals nothing, but plumbing it to `Result` without retaining bodies needs care; keeps the no-stolen-values boundary).
+- [ ] A real Maltego transform server (local HTTP), beyond the import CSV.
+- [ ] `footprint keygen` / `--sign-key` so the audit key can be managed or kept off the case directory (e.g. OS keychain).
+- [ ] Wire `--proxy`, `--case-id`, and `--authority` into the `lookup` network calls' own client, and into the future MCP server.
+- [ ] CI: `go test -race`, `go vet`, `govulncheck`, and `gofmt` gate; GoReleaser with SBOM + cosign.

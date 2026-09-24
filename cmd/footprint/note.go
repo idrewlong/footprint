@@ -58,6 +58,7 @@ func runNote(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "footprint: %v\n", err)
 		return 1
 	}
+	report.ScoreConfidence(&merged)
 	start := time.Now()
 	if err := writeReport(stdout, stderr, merged, asJSON, asMarkdown, start, 0); err != nil {
 		return 1

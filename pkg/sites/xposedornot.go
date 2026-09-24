@@ -28,7 +28,11 @@ func (xposedornot) Method() string   { return "breach" }
 func (s *xposedornot) Check(ctx context.Context, c *http.Client, email string) checker.Result {
 	start := time.Now()
 	status, detail := s.lookup(ctx, c, email)
-	return s.result(status, detail, time.Since(start))
+	res := s.result(status, detail, time.Since(start))
+	if status == checker.StatusFound {
+		res.Breaches = breachHitsFromNames(detail)
+	}
+	return res
 }
 
 func (s *xposedornot) result(status checker.Status, detail string, elapsed time.Duration) checker.Result {

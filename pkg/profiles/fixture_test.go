@@ -58,11 +58,69 @@ func TestInsaneJournalUnregisteredIsMiss(t *testing.T) {
 	}
 }
 
-func TestProfileTextMentionStaysFound(t *testing.T) {
-	raw := "HTTP/1.1 200 OK\n\n<html><title>Ada</title><p>People call me an unknown user.</p></html>\n"
+func TestInsaneJournalProfileIsFound(t *testing.T) {
+	raw := "HTTP/1.1 200 OK\n\n<html><title>User Info</title><table><tr><td><b>User:</b></td><td>nobody</td></tr></table></html>\n"
 	res := checkRaw(t, "insanejournal", raw)
 	if res.Status != checker.StatusFound || res.ProfileURL == "" {
 		t.Fatalf("%+v", res)
+	}
+}
+
+// A 200 page without either marker is not evidence of an account.
+func TestInsaneJournalUnmarkedPageIsError(t *testing.T) {
+	raw := "HTTP/1.1 200 OK\n\n<html><title>InsaneJournal</title><p>Welcome</p></html>\n"
+	res := checkRaw(t, "insanejournal", raw)
+	if res.Status != checker.StatusError || res.ProfileURL != "" {
+		t.Fatalf("%+v", res)
+	}
+}
+
+func TestProfileTextMentionStaysFound(t *testing.T) {
+	raw := "HTTP/1.1 200 OK\n\n<html><title>Ada</title><p>People call me an unknown user.</p></html>\n"
+	res := checkRaw(t, catalogName(t), raw)
+	if res.Status != checker.StatusFound || res.ProfileURL == "" {
+		t.Fatalf("%+v", res)
+	}
+}
+
+func TestPageMarkersNameCatalogPages(t *testing.T) {
+	pages := map[string]bool{}
+	for _, p := range catalogPages {
+		pages[p.name] = true
+	}
+	for name, m := range pageMarkers {
+		if !pages[name] {
+			t.Errorf("markers for %s, which is not a catalog page", name)
+		}
+		if len(m.exists) == 0 && len(m.missing) == 0 {
+			t.Errorf("%s has an empty marker entry", name)
+		}
+	}
+}
+
+func TestMarkersDecide(t *testing.T) {
+	both := markers{exists: []string{"<b>User:</b>"}, missing: []string{"Unknown user"}}
+	onlyMissing := markers{missing: []string{"no such member"}}
+	cases := []struct {
+		name    string
+		m       markers
+		body    string
+		want    checker.Status
+		decided bool
+	}{
+		{"missing wins over exists", both, "<b>User:</b> Unknown user", checker.StatusNotFound, true},
+		{"exists", both, "<B>USER:</B> ada", checker.StatusFound, true},
+		{"neither with exists markers", both, "<p>home</p>", checker.StatusError, true},
+		{"missing only, matched", onlyMissing, "No such member here", checker.StatusNotFound, true},
+		{"missing only, unmatched", onlyMissing, "<p>ada</p>", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, decided := tc.m.decide([]byte(tc.body))
+			if got != tc.want || decided != tc.decided {
+				t.Fatalf("got %q %v, want %q %v", got, decided, tc.want, tc.decided)
+			}
+		})
 	}
 }
 
@@ -90,6 +148,7 @@ func TestCatalogPageStatuses(t *testing.T) {
 	}
 }
 
+// catalogName returns a catalog page with no markers, for the generic checks.
 func catalogName(t *testing.T) string {
 	t.Helper()
 	hand := map[string]bool{
@@ -97,7 +156,7 @@ func catalogName(t *testing.T) string {
 		"hackernews": true, "huggingface": true, "lichess": true,
 	}
 	for _, site := range All() {
-		if !hand[site.Name()] {
+		if _, marked := pageMarkers[site.Name()]; !hand[site.Name()] && !marked {
 			return site.Name()
 		}
 	}

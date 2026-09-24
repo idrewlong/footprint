@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/idrewlong/footprint/pkg/checker"
+	"github.com/idrewlong/footprint/pkg/infra"
 )
 
 // Summary counts each status so a partial run is not described as complete.
@@ -28,6 +29,7 @@ type Document struct {
 	SubjectDomain string           `json:"subject_domain,omitempty"`
 	SubjectIP     string           `json:"subject_ip,omitempty"`
 	SubjectEntity string           `json:"subject_entity,omitempty"`
+	IP            *infra.Profile   `json:"ip,omitempty"`
 	Summary       Summary          `json:"summary"`
 	Results       []checker.Result `json:"results"`
 }
@@ -109,10 +111,15 @@ func WriteHuman(w io.Writer, doc Document, elapsed time.Duration, color bool) er
 		query = doc.SubjectEntity
 		empty = "No public-list match found."
 	}
+	panel := ipPanel(doc.IP)
 	var found, limited, failed []checker.Result
 	for _, res := range doc.Results {
 		switch res.Status {
 		case checker.StatusFound:
+			// The IP panel already shows what the infra rows found.
+			if len(panel) > 0 && res.Method == "infra" {
+				continue
+			}
 			found = append(found, res)
 		case checker.StatusNotFound:
 			// Misses stay in the summary.
@@ -136,7 +143,14 @@ func WriteHuman(w io.Writer, doc Document, elapsed time.Duration, color bool) er
 	b.WriteByte('\n')
 	b.WriteString(summaryLine(doc.Summary, color))
 	b.WriteByte('\n')
-	if len(found) == 0 {
+	if len(panel) > 0 {
+		b.WriteByte('\n')
+		writeRule(&b, "ip address", "1;36", color)
+		writeIPPanel(&b, panel, doc.IP, color)
+	}
+	if len(found) == 0 && len(panel) > 0 {
+		// The panel is the finding.
+	} else if len(found) == 0 {
 		b.WriteString("\n")
 		b.WriteString(empty)
 		b.WriteByte('\n')
@@ -377,7 +391,11 @@ func WriteMarkdown(w io.Writer, doc Document, meta Meta) error {
 	fmt.Fprintf(&b, "**Bottom line:** %s\n\n", bottomLine(doc))
 	writeFindings(&b, doc)
 	writeGrouped(&b, doc, "dns", "Domain")
-	writeGrouped(&b, doc, "infra", "Infrastructure")
+	if rows := ipPanel(doc.IP); len(rows) > 0 {
+		writeIPTable(&b, rows, doc.IP)
+	} else {
+		writeGrouped(&b, doc, "infra", "Infrastructure")
+	}
 	writeGrouped(&b, doc, "entity", "Entity")
 	writeCoverage(&b, doc, meta)
 	writeActions(&b, doc)
@@ -760,4 +778,161 @@ func oneLine(s string, max int) string {
 		return s[:max-1] + "…"
 	}
 	return s
+}
+
+// ipField is one labeled line of the IP panel.
+type ipField struct{ label, value string }
+
+// ipPanel lists the profile fields that have values, in the order a
+// what-is-my-IP page shows them. A nil profile has no panel.
+func ipPanel(p *infra.Profile) []ipField {
+	if p == nil || p.IP == "" {
+		return nil
+	}
+	scope := "public"
+	if !p.Public {
+		scope = "private or reserved, not sent to public lookups"
+	}
+	country := p.Country
+	switch {
+	case country != "" && p.CountryCode != "":
+		country += " (" + p.CountryCode + ")"
+	case country == "":
+		country = p.CountryCode
+	}
+	asn := ""
+	if p.ASN != "" {
+		asn = joinNonEmpty(" · ", "AS"+p.ASN, p.ASName)
+	}
+	network := joinNonEmpty(" · ", p.Network, p.NetworkHandle, p.NetworkRange)
+	coords := ""
+	if p.Latitude != nil && p.Longitude != nil && p.AccuracyKM > 0 {
+		coords = fmt.Sprintf("%.4f, %.4f ±%d km", *p.Latitude, *p.Longitude, p.AccuracyKM)
+	}
+	hostname := p.Hostname
+	switch {
+	case hostname == "":
+	case p.HostnameCheck == "confirmed":
+		hostname += " · resolves back to this IP"
+	case p.HostnameCheck == "mismatch":
+		hostname += " · does not resolve back to this IP"
+	}
+	all := []ipField{
+		{"IP", p.IP + " · " + p.Version + " · " + scope},
+		{"Hostname", hostname},
+		{"City", p.City},
+		{"Region", p.Region},
+		{"Postal code", p.PostalCode},
+		{"Country", country},
+		{"Time zone", p.TimeZone},
+		{"Coordinates", coords},
+		{"ASN", asn},
+		{"Prefix", joinNonEmpty(" · ", p.Prefix, p.Registry)},
+		{"Network", network},
+		{"Organization", p.Organization},
+	}
+	all = append(all, flagFields(p)...)
+	rows := all[:0]
+	for _, f := range all {
+		if f.value != "" {
+			rows = append(rows, f)
+		}
+	}
+	return rows
+}
+
+var flagKinds = map[string]string{
+	infra.KindHosting: "Cloud or hosting",
+	infra.KindCDN:     "CDN",
+	infra.KindTor:     "Tor exit",
+	infra.KindVPN:     "VPN (community list)",
+}
+
+// flagFields is one line per list that contains the address, or one line
+// saying none did. Lists that could not be read are named, so a miss is
+// never shown as complete when it is not.
+func flagFields(p *infra.Profile) []ipField {
+	if p.RangesChecked == 0 && len(p.RangesUnavailable) == 0 {
+		return nil
+	}
+	var out []ipField
+	for i, f := range p.Flags {
+		label := ""
+		if i == 0 {
+			label = "Flags"
+		}
+		kind := flagKinds[f.Kind]
+		if kind == "" {
+			kind = f.Kind
+		}
+		out = append(out, ipField{label, joinNonEmpty(" · ", kind, f.Source, f.Detail, f.Prefix)})
+	}
+	if len(p.Flags) == 0 {
+		value := fmt.Sprintf("none in %d published lists", p.RangesChecked)
+		if len(p.RangesUnavailable) > 0 {
+			value = fmt.Sprintf("none in %d lists read", p.RangesChecked)
+		}
+		out = append(out, ipField{"Flags", value})
+	}
+	var notes []string
+	if len(p.RangesUnavailable) > 0 {
+		notes = append(notes, "could not load "+strings.Join(p.RangesUnavailable, ", "))
+	}
+	if len(p.RangesStale) > 0 {
+		notes = append(notes, "old copy of "+strings.Join(p.RangesStale, ", "))
+	}
+	if len(notes) > 0 {
+		out = append(out, ipField{"Range lists", strings.Join(notes, "; ")})
+	}
+	return out
+}
+
+func joinNonEmpty(sep string, parts ...string) string {
+	kept := parts[:0:0]
+	for _, part := range parts {
+		if part != "" {
+			kept = append(kept, part)
+		}
+	}
+	return strings.Join(kept, sep)
+}
+
+const ipLocationNote = "Location is the network's, not a person's or a street address."
+
+func hasLocation(p *infra.Profile) bool {
+	return p.City != "" || p.Region != "" || p.Latitude != nil || p.PostalCode != "" || p.Country != "" || p.CountryCode != ""
+}
+
+func writeIPPanel(b *strings.Builder, rows []ipField, p *infra.Profile, color bool) {
+	labelW := 0
+	for _, f := range rows {
+		if n := len(f.label); n > labelW {
+			labelW = n
+		}
+	}
+	for _, f := range rows {
+		label := f.label + strings.Repeat(" ", labelW-len(f.label))
+		if color {
+			label = colorize("2", label)
+		}
+		fmt.Fprintf(b, "  %s  %s\n", label, f.value)
+	}
+	if hasLocation(p) {
+		note := ipLocationNote
+		if color {
+			note = colorize("2", note)
+		}
+		fmt.Fprintf(b, "\n  %s\n", note)
+	}
+}
+
+func writeIPTable(b *strings.Builder, rows []ipField, p *infra.Profile) {
+	b.WriteString("## IP address\n\n| Field | Value |\n| --- | --- |\n")
+	for _, f := range rows {
+		fmt.Fprintf(b, "| %s | %s |\n", mdCell(f.label), mdCell(f.value))
+	}
+	b.WriteString("\n")
+	if hasLocation(p) {
+		b.WriteString(ipLocationNote + "\n\n")
+	}
 }

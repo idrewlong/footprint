@@ -44,6 +44,14 @@ func (p page) lookup(ctx context.Context, c *http.Client, target string) (checke
 	if status != http.StatusOK {
 		return unexpected()
 	}
+	if m, ok := pageMarkers[p.name]; ok {
+		if status, decided := m.decide(body); decided {
+			if status == checker.StatusError {
+				return unexpected()
+			}
+			return status, ""
+		}
+	}
 	if wallTitle(title) {
 		return unexpected()
 	}
@@ -51,6 +59,41 @@ func (p page) lookup(ctx context.Context, c *http.Client, target string) (checke
 		return checker.StatusNotFound, ""
 	}
 	return checker.StatusFound, ""
+}
+
+// markers is page text that settles a 200 response for one site. A
+// missing marker is a miss. An exists marker is a hit. When a site lists
+// exists markers, a 200 with neither is an error, not a hit. A site with
+// only missing markers falls back to the generic title checks.
+// Take markers from the site's own pages, for a real and a missing name.
+type markers struct {
+	exists, missing []string
+}
+
+// pageMarkers are keyed by catalog page name.
+var pageMarkers = map[string]markers{
+	"insanejournal": {
+		exists:  []string{"<b>User:</b>"},
+		missing: []string{"<h2>Unknown user</h2>"},
+	},
+}
+
+func (m markers) decide(body []byte) (checker.Status, bool) {
+	text := strings.ToLower(string(body))
+	for _, marker := range m.missing {
+		if strings.Contains(text, strings.ToLower(marker)) {
+			return checker.StatusNotFound, true
+		}
+	}
+	for _, marker := range m.exists {
+		if strings.Contains(text, strings.ToLower(marker)) {
+			return checker.StatusFound, true
+		}
+	}
+	if len(m.exists) > 0 {
+		return checker.StatusError, true
+	}
+	return "", false
 }
 
 func pageTitle(body []byte) string {

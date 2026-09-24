@@ -1,0 +1,9 @@
+HTTP/1.1 200 OK
+Content-Type: text/html; charset=utf-8
+
+<!doctype html><html><head><title>Register - Login</title></head><body><script>window.___INITIAL_STATE___ = {"apiFetchStore":{"API_TOKEN":"aIcXSOoTtqrzR8L8YEIOmBeW94c3FmbSNSWAUbxsny9KKx5VFh","extraHeaders":{}}};</script></body></html>
+---
+HTTP/1.1 429 Too Many Requests
+Content-Type: application/json; charset=utf-8
+
+{"meta":{"status":429,"msg":"Limit Exceeded"},"response":[]}

@@ -195,3 +195,18 @@ func TestResultJSONUsesMilliseconds(t *testing.T) {
 		t.Fatalf("round trip duration = %s", back.Duration)
 	}
 }
+
+func TestRunDoesNotBlockWhenCallerStopsReading(t *testing.T) {
+	var sites []Site
+	for _, name := range []string{"a", "b", "c", "d", "e"} {
+		sites = append(sites, stub{name: name, domain: name + ".example", category: "dev", method: "register"})
+	}
+	out := Run(context.Background(), "a@b.co", sites, Options{Concurrency: 2, Timeout: time.Second})
+	deadline := time.Now().Add(2 * time.Second)
+	for len(out) < len(sites) {
+		if time.Now().After(deadline) {
+			t.Fatalf("only %d of %d results sent with no reader", len(out), len(sites))
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}

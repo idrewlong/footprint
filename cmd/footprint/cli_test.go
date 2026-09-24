@@ -417,6 +417,10 @@ func (f *fakeLookupDNS) LookupTXT(ctx context.Context, name string) ([]string, e
 	return f.txt[name], nil
 }
 
+func (f *fakeLookupDNS) LookupHost(ctx context.Context, host string) ([]string, error) {
+	return nil, nil
+}
+
 func (f *fakeLookupDNS) LookupAddr(ctx context.Context, addr string) ([]string, error) {
 	f.seenAddr = append(f.seenAddr, addr)
 	return f.addr, nil

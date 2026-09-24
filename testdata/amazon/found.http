@@ -1,0 +1,31 @@
+HTTP/1.1 302 Found
+Location: https://www.amazon.com/ax/claim?arb=8788165b-15ca-4bdb-b9fb-483c84ea56e3
+Set-Cookie: session-id=131-0000000-0000000; Domain=.amazon.com; Path=/; Secure
+Set-Cookie: i18n-prefs=USD; Domain=.amazon.com; Path=/
+
+---
+HTTP/1.1 200 OK
+Content-Type: text/html;charset=UTF-8
+Set-Cookie: ap-fid=""; Domain=.amazon.com; Path=/ap/; Secure
+
+<!doctype html><html><head><title dir="ltr">Sign in</title></head><body>
+<form name="signIn" method="post" novalidate action="/ax/claim?arb=8788165b-15ca-4bdb-b9fb-483c84ea56e3&amp;openid.assoc_handle=usflex&amp;openid.mode=checkid_setup&amp;policy_handle=Retail-Checkout&amp;openid.return_to=https%3A%2F%2Fwww.amazon.com%2F&amp;openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0" class="auth-validate-form">
+<input type="hidden" name="appAction" value="SIGNIN_PWD_COLLECT">
+<input type="hidden" name="subPageType" value="FullPageUnifiedClaimCollect">
+<input type="hidden" name="claimCollectionWorkflow" value="unified">
+<input type="hidden" name="anti-csrftoken-a2z" value="hMZ2token">
+<input type="text" id="ap_email_login" autocomplete="username" name="email" class="a-input-text" aria-label="Enter mobile number or email"/>
+<input class="a-button-input" type="submit" aria-labelledby="continue-announce">
+</form></body></html>
+---
+HTTP/1.1 200 OK
+Content-Type: text/html;charset=UTF-8
+
+<!doctype html><html><head><title dir="ltr">Amazon Sign-In</title></head><body>
+<form name="signIn" method="post" novalidate action="https://www.amazon.com/ap/signin" class="auth-validate-form auth-real-time-validation a-spacing-none">
+<input type="hidden" name="appActionToken" value="tok"><input type="hidden" name="appAction" value="SIGNIN_PWD_COLLECT">
+<input type="hidden" name="email" value="nobody@example.com" id="ap-credential-autofill-hint">
+<h1>Sign in</h1><span>nobody@example.com</span>
+<label for="ap_password">Password</label><input type="password" id="ap_password" name="password" class="a-input-text">
+<a href="/ap/forgotpassword">Forgot password?</a>
+</form></body></html>

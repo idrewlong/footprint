@@ -1,0 +1,9 @@
+HTTP/1.1 200 OK
+Content-Type: text/html; charset=utf-8
+
+<!doctype html><html><head><title>Register - Login</title></head><body><script>window.___INITIAL_STATE___ = {"apiFetchStore":{"API_TOKEN":"aIcXSOoTtqrzR8L8YEIOmBeW94c3FmbSNSWAUbxsny9KKx5VFh","extraHeaders":{}}};</script></body></html>
+---
+HTTP/1.1 400 Bad Request
+Content-Type: application/json; charset=utf-8
+
+{"meta":{"status":400,"msg":"Bad Request"},"response":{"error":"Password must be at least 8 characters long","code":1030,"reject_code":1,"reject_reason":"The password must be at least 8 characters."}}

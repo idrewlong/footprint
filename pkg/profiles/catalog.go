@@ -164,7 +164,6 @@ var catalogPages = []page{
 	{"patch", "patch.com", "social", "https://patch.com/users/{account}"},
 	{"patronite", "patronite.pl", "productivity", "https://patronite.pl/{account}"},
 	{"paypalbusiness", "paypal.com", "productivity", "https://www.paypal.com/biz/profile-data/{account}"},
-	{"paypalme", "paypal.com", "productivity", "https://www.paypal.com/paypalme/{account}"},
 	{"peing", "peing.net", "social", "https://peing.net/en/{account}"},
 	{"peoopleinfluencer", "peoople.app", "social", "https://peoople.app/en/influencer/{account}/"},
 	{"peooplestar", "peoople.app", "social", "https://peoople.app/en/star/{account}/"},

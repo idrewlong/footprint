@@ -18,8 +18,18 @@ type maxmindRecord struct {
 		Names map[string]string `maxminddb:"names"`
 	} `maxminddb:"subdivisions"`
 	Country struct {
-		ISOCode string `maxminddb:"iso_code"`
+		ISOCode string            `maxminddb:"iso_code"`
+		Names   map[string]string `maxminddb:"names"`
 	} `maxminddb:"country"`
+	Postal struct {
+		Code string `maxminddb:"code"`
+	} `maxminddb:"postal"`
+	Location struct {
+		TimeZone       string   `maxminddb:"time_zone"`
+		Latitude       *float64 `maxminddb:"latitude"`
+		Longitude      *float64 `maxminddb:"longitude"`
+		AccuracyRadius uint16   `maxminddb:"accuracy_radius"`
+	} `maxminddb:"location"`
 }
 
 // OpenGeoIP opens a MaxMind DB file and returns a GeoIP lookup.
@@ -38,8 +48,14 @@ func (g *maxmindGeo) Lookup(ip net.IP) (Place, error) {
 		return Place{}, err
 	}
 	place := Place{
-		City:    record.City.Names["en"],
-		Country: record.Country.ISOCode,
+		City:        record.City.Names["en"],
+		PostalCode:  record.Postal.Code,
+		Country:     record.Country.Names["en"],
+		CountryCode: record.Country.ISOCode,
+		TimeZone:    record.Location.TimeZone,
+		Latitude:    record.Location.Latitude,
+		Longitude:   record.Location.Longitude,
+		AccuracyKM:  int(record.Location.AccuracyRadius),
 	}
 	if len(record.Subdivisions) > 0 {
 		place.Region = record.Subdivisions[0].Names["en"]

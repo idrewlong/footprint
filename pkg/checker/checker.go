@@ -121,6 +121,10 @@ type Options struct {
 // Run checks every site in its own goroutine and sends each Result on the
 // returned channel. The channel is closed after the last result.
 // A slow site cannot hold the rest of the run past opts.Timeout.
+//
+// The channel holds one slot per site, so a caller that stops reading
+// early does not strand the check goroutines. Cancel ctx to stop checks
+// that are still running.
 func Run(ctx context.Context, email string, sites []Site, opts Options) <-chan Result {
 	if opts.Concurrency <= 0 {
 		opts.Concurrency = DefaultConcurrency
@@ -128,10 +132,14 @@ func Run(ctx context.Context, email string, sites []Site, opts Options) <-chan R
 	if opts.Timeout <= 0 {
 		opts.Timeout = DefaultTimeout
 	}
-	out := make(chan Result)
+	out := make(chan Result, len(sites))
 	go func() {
 		defer close(out)
 		gate := httpx.NewGate(time.Minute)
+		// One transport per run lets checks reuse connections and TLS
+		// sessions. Each check still gets its own cookie jar.
+		transport := httpx.NewTransport()
+		defer transport.CloseIdleConnections()
 		sem := make(chan struct{}, opts.Concurrency)
 		var wg sync.WaitGroup
 		for _, site := range sites {
@@ -145,7 +153,7 @@ func Run(ctx context.Context, email string, sites []Site, opts Options) <-chan R
 					out <- annotate(site, Result{Status: StatusError, Detail: "cancelled"})
 					return
 				}
-				out <- checkOne(ctx, gate, site, email, opts.Timeout)
+				out <- checkOne(ctx, transport, gate, site, email, opts.Timeout)
 			}(site)
 		}
 		wg.Wait()
@@ -153,7 +161,7 @@ func Run(ctx context.Context, email string, sites []Site, opts Options) <-chan R
 	return out
 }
 
-func checkOne(parent context.Context, gate *httpx.Gate, site Site, email string, timeout time.Duration) (res Result) {
+func checkOne(parent context.Context, transport http.RoundTripper, gate *httpx.Gate, site Site, email string, timeout time.Duration) (res Result) {
 	defer func() {
 		if recover() != nil {
 			res = annotate(site, Result{Status: StatusError, Detail: "check failed"})
@@ -162,7 +170,7 @@ func checkOne(parent context.Context, gate *httpx.Gate, site Site, email string,
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	start := time.Now()
-	client := httpx.NewClient(httpx.Config{Timeout: timeout, Gate: gate})
+	client := httpx.NewClient(httpx.Config{Timeout: timeout, Gate: gate, Transport: transport})
 	res = site.Check(ctx, client, email)
 	if res.Duration == 0 {
 		res.Duration = time.Since(start)

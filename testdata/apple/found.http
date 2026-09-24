@@ -1,0 +1,19 @@
+HTTP/1.1 200 OK
+Content-Type: text/html;charset=UTF-8
+scnt: AAAA-kEwNDlFRkQxMDBBRDEzMTMyRTBFOEJDRTUxQzQx
+X-Apple-ID-Session-Id: A049EFD100AD13132E0E8BCE51C41B3AB0DB670E
+X-Apple-HC-Bits: 11
+Set-Cookie: idclient=web; Domain=appleid.apple.com; Path=/; Secure; HttpOnly
+Set-Cookie: aidsp=A049EFD100AD13132E0E8BCE51C41B3AB0DB670E; Domain=apple.com; Path=/; Secure; HttpOnly
+
+<!DOCTYPE html><html><head><title>Manage your Apple Account</title></head><body></body></html>
+---
+HTTP/1.1 200 OK
+Content-Type: application/json;charset=UTF-8
+
+{
+  "valid" : true,
+  "used" : true,
+  "appleOwnedDomain" : false,
+  "isRecycledDomain" : false
+}

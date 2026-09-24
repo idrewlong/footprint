@@ -29,11 +29,18 @@ go.work.sum
 *.pem
 *.key
 
+# Files a user supplies or the tool writes locally. Not needed to build or run from source.
+*.mmdb
+/sdn.csv
+/cases/
+.probe/
+
 # Editor and OS
 .idea/
 .vscode/
 .DS_Store
 *.swp
 
-# Linked worktrees
+# Local agent scratch and linked worktrees
+.superpowers/
 .worktrees/

@@ -1,6 +1,7 @@
 package sites
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -82,7 +83,7 @@ func humanList(names []string) string {
 	return strings.Join(names[:len(names)-1], ", ") + ", and " + names[len(names)-1]
 }
 
-func do(ctx context.Context, c *http.Client, req *http.Request) (int, http.Header, []byte, error) {
+func do(c *http.Client, req *http.Request) (int, http.Header, []byte, error) {
 	if c == nil {
 		return 0, nil, nil, errors.New("nil client")
 	}
@@ -115,7 +116,7 @@ func get(ctx context.Context, c *http.Client, rawURL string, header http.Header)
 		return 0, nil, nil, err
 	}
 	copyHeader(req.Header, header)
-	return do(ctx, c, req)
+	return do(c, req)
 }
 
 func postForm(ctx context.Context, c *http.Client, rawURL string, form url.Values, header http.Header) (int, http.Header, []byte, error) {
@@ -125,23 +126,26 @@ func postForm(ctx context.Context, c *http.Client, rawURL string, form url.Value
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	copyHeader(req.Header, header)
-	return do(ctx, c, req)
+	return do(c, req)
 }
 
 func postJSON(ctx context.Context, c *http.Client, rawURL string, payload []byte, header http.Header) (int, http.Header, []byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rawURL, strings.NewReader(string(payload)))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rawURL, bytes.NewReader(payload))
 	if err != nil {
 		return 0, nil, nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	copyHeader(req.Header, header)
-	return do(ctx, c, req)
+	return do(c, req)
 }
 
+// copyHeader replaces each key in dst with every value from src, so a
+// caller can override a default and still send a repeated header.
 func copyHeader(dst, src http.Header) {
 	for key, values := range src {
+		dst.Del(key)
 		for _, value := range values {
-			dst.Set(key, value)
+			dst.Add(key, value)
 		}
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/idrewlong/footprint/pkg/checker"
+	"github.com/idrewlong/footprint/pkg/infra"
 )
 
 func sample() []checker.Result {
@@ -399,5 +400,149 @@ func TestWriteMarkdownEntitySection(t *testing.T) {
 	}
 	if !strings.Contains(out, "| ofac | entity |") {
 		t.Fatalf("missing ofac row:\n%s", out)
+	}
+}
+
+func ipDoc() Document {
+	rows := []checker.Result{
+		{Site: "ptr", Domain: "8.8.8.8", Category: "infra", Method: "infra", Status: checker.StatusFound, Evidence: "Reverse DNS names this address dns.google."},
+		{Site: "asn", Domain: "8.8.8.8", Category: "infra", Method: "infra", Status: checker.StatusFound, Evidence: "Team Cymru DNS lists AS15169."},
+		{Site: "geoip", Domain: "8.8.8.8", Category: "infra", Method: "infra", Status: checker.StatusFound, Evidence: "GeoIP database places this address in Mountain View."},
+		{Site: "rdap", Domain: "8.8.8.8", Category: "infra", Method: "infra", Status: checker.StatusRateLimited},
+	}
+	doc := Build("", rows, false)
+	doc.SubjectIP = "8.8.8.8"
+	lat, lon := 37.4223, -122.085
+	doc.IP = &infra.Profile{
+		Latitude: &lat, Longitude: &lon, AccuracyKM: 1000,
+		IP: "8.8.8.8", Version: "IPv4", Public: true, Hostname: "dns.google",
+		City: "Mountain View", Region: "California", PostalCode: "94043", Country: "United States", CountryCode: "US",
+		TimeZone: "America/Los_Angeles", ASN: "15169", ASName: "GOOGLE - Google LLC, US", Prefix: "8.8.8.0/24", Registry: "arin",
+	}
+	return doc
+}
+
+func TestWriteHumanIPPanel(t *testing.T) {
+	var buf bytes.Buffer
+	if err := WriteHuman(&buf, ipDoc(), time.Second, false); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{
+		"ip address ─",
+		"  IP           8.8.8.8 · IPv4 · public\n",
+		"  Hostname     dns.google\n",
+		"  Postal code  94043\n",
+		"  Country      United States (US)\n",
+		"  Time zone    America/Los_Angeles\n",
+		"  Coordinates  37.4223, -122.0850 ±1000 km\n",
+		"  ASN          AS15169 · GOOGLE - Google LLC, US\n",
+		"  Prefix       8.8.8.0/24 · arin\n",
+		"not a person's or a street address",
+		"rdap  rate limited",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in\n%s", want, out)
+		}
+	}
+	for _, gone := range []string{"found ─", "Network ", "Organization", "No network details found."} {
+		if strings.Contains(out, gone) {
+			t.Fatalf("unexpected %q in\n%s", gone, out)
+		}
+	}
+}
+
+func TestWriteHumanPrivateIPPanelHasNoLocationNote(t *testing.T) {
+	doc := Build("", nil, false)
+	doc.SubjectIP = "10.0.0.1"
+	doc.IP = &infra.Profile{IP: "10.0.0.1", Version: "IPv4"}
+	var buf bytes.Buffer
+	if err := WriteHuman(&buf, doc, time.Second, false); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "10.0.0.1 · IPv4 · private or reserved, not sent to public lookups") || strings.Contains(out, "street address") {
+		t.Fatal(out)
+	}
+}
+
+func TestWriteMarkdownIPTable(t *testing.T) {
+	var buf bytes.Buffer
+	if err := WriteMarkdown(&buf, ipDoc(), Meta{Version: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "## IP address\n\n| Field | Value |") || !strings.Contains(out, "| City | Mountain View |") {
+		t.Fatal(out)
+	}
+	if strings.Contains(out, "## Infrastructure") {
+		t.Fatalf("infra rows duplicated the panel:\n%s", out)
+	}
+}
+
+func TestWriteJSONIncludesIPProfile(t *testing.T) {
+	var buf bytes.Buffer
+	if err := WriteJSON(&buf, ipDoc()); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		IP infra.Profile `json:"ip"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.IP.ASName != "GOOGLE - Google LLC, US" || got.IP.PostalCode != "94043" || got.IP.Latitude == nil || got.IP.AccuracyKM != 1000 {
+		t.Fatalf("%+v", got.IP)
+	}
+}
+
+func TestWriteHumanIPFlags(t *testing.T) {
+	doc := Build("", nil, false)
+	doc.SubjectIP = "185.220.101.1"
+	doc.IP = &infra.Profile{
+		IP: "185.220.101.1", Version: "IPv4", Public: true,
+		Hostname: "tor-exit.example", HostnameCheck: "mismatch",
+		Flags: []infra.RangeFlag{
+			{Kind: infra.KindTor, Source: "Tor exit list", Prefix: "185.220.101.1/32"},
+			{Kind: infra.KindHosting, Source: "AWS", Prefix: "185.220.0.0/16", Detail: "EC2 · us-east-1"},
+		},
+		RangesChecked: 8, RangesUnavailable: []string{"Azure"}, RangesStale: []string{"Tor exit list"},
+	}
+	var buf bytes.Buffer
+	if err := WriteHuman(&buf, doc, time.Second, false); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{
+		"tor-exit.example · does not resolve back to this IP\n",
+		"Flags        Tor exit · Tor exit list · 185.220.101.1/32\n",
+		"             Cloud or hosting · AWS · EC2 · us-east-1 · 185.220.0.0/16\n",
+		"Range lists  could not load Azure; old copy of Tor exit list\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in\n%s", want, out)
+		}
+	}
+}
+
+func TestIPPanelMissIsNotShownAsComplete(t *testing.T) {
+	p := &infra.Profile{IP: "8.8.8.8", Version: "IPv4", Public: true, RangesChecked: 8, RangesUnavailable: []string{"Azure"}}
+	var flags string
+	for _, f := range ipPanel(p) {
+		if f.label == "Flags" {
+			flags = f.value
+		}
+	}
+	if flags != "none in 8 lists read" {
+		t.Fatalf("flags=%q", flags)
+	}
+	p.RangesUnavailable = nil
+	for _, f := range ipPanel(p) {
+		if f.label == "Flags" {
+			flags = f.value
+		}
+	}
+	if flags != "none in 8 published lists" {
+		t.Fatalf("flags=%q", flags)
 	}
 }

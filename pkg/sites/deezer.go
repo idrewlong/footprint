@@ -29,10 +29,10 @@ func (s *deezer) Check(ctx context.Context, c *http.Client, email string) checke
 
 func (s *deezer) result(status checker.Status, detail string, elapsed time.Duration) checker.Result {
 	return base{
-		name:        "deezer",
-		domain:      "deezer.com",
-		category:    "entertainment",
-		method:      "register",
+		name:          "deezer",
+		domain:        "deezer.com",
+		category:      "entertainment",
+		method:        "register",
 		deleteURL:     "https://www.deezer.com/account",
 		securityURL:   "https://www.deezer.com/account",
 		foundEvidence: "Signup email check said this email is already registered.",

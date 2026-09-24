@@ -8,6 +8,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/idrewlong/footprint/internal/httpx"
 	"github.com/idrewlong/footprint/pkg/checker"
 )
 
@@ -33,8 +34,12 @@ type Fetcher interface {
 }
 
 var (
-	cgnatNet = mustCIDR("100.64.0.0/10")
-	docNet   = mustCIDR("2001:db8::/32")
+	cgnatNet  = mustCIDR("100.64.0.0/10")
+	docNet    = mustCIDR("2001:db8::/32")
+	testNet1  = mustCIDR("192.0.2.0/24")
+	testNet2  = mustCIDR("198.51.100.0/24")
+	testNet3  = mustCIDR("203.0.113.0/24")
+	futureNet = mustCIDR("240.0.0.0/4")
 )
 
 func mustCIDR(s string) *net.IPNet {
@@ -71,6 +76,9 @@ func isPublic(ip net.IP) bool {
 	if cgnatNet.Contains(ip) || docNet.Contains(ip) {
 		return false
 	}
+	if testNet1.Contains(ip) || testNet2.Contains(ip) || testNet3.Contains(ip) || futureNet.Contains(ip) {
+		return false
+	}
 	return true
 }
 
@@ -96,6 +104,7 @@ func checkPTR(ctx context.Context, r Resolver, ip string) checker.Result {
 			return row
 		}
 		row.Status = checker.StatusError
+		row.Detail = "dns lookup failed"
 		return row
 	}
 	if len(names) == 0 {
@@ -117,20 +126,24 @@ func checkASN(ctx context.Context, r Resolver, ip string, parsed net.IP, pub boo
 	name, ok := cymruOriginName(parsed)
 	if !ok {
 		row.Status = checker.StatusError
+		row.Detail = "asn lookup supports IPv4 only"
 		return row
 	}
 	txt, err := r.LookupTXT(ctx, name)
 	if err != nil {
 		row.Status = checker.StatusError
+		row.Detail = "dns lookup failed"
 		return row
 	}
 	if len(txt) == 0 {
 		row.Status = checker.StatusError
+		row.Detail = "asn payload not understood"
 		return row
 	}
 	asn := strings.TrimSpace(strings.Split(txt[0], "|")[0])
 	if asn == "" {
 		row.Status = checker.StatusError
+		row.Detail = "asn payload not understood"
 		return row
 	}
 	row.Status = checker.StatusFound
@@ -158,6 +171,7 @@ func checkGeoIP(geo GeoIP, ip string, parsed net.IP, pub bool) checker.Result {
 	place, err := geo.Lookup(parsed)
 	if err != nil {
 		row.Status = checker.StatusError
+		row.Detail = "geoip lookup failed"
 		return row
 	}
 	parts := make([]string, 0, 3)
@@ -165,6 +179,11 @@ func checkGeoIP(geo GeoIP, ip string, parsed net.IP, pub bool) checker.Result {
 		if p != "" {
 			parts = append(parts, p)
 		}
+	}
+	if len(parts) == 0 {
+		row.Status = checker.StatusNotFound
+		row.Evidence = "The GeoIP database has no record for this address."
+		return row
 	}
 	row.Status = checker.StatusFound
 	row.Evidence = "GeoIP database places this address in " + strings.Join(parts, ", ") + ". This is the network's city, not a person or a street address."
@@ -184,14 +203,17 @@ func checkRDAP(ctx context.Context, fetch Fetcher, ip string, pub bool) checker.
 	body, status, err := fetch.Get(ctx, "https://rdap.org/ip/"+ip)
 	if err != nil {
 		row.Status = checker.StatusError
+		row.Detail = "rdap request failed"
+		return row
+	}
+	if httpx.IsLimited(status, body) {
+		row.Status = checker.StatusRateLimited
 		return row
 	}
 	switch status {
 	case 404:
 		row.Status = checker.StatusNotFound
-		return row
-	case 429:
-		row.Status = checker.StatusRateLimited
+		row.Evidence = "RDAP has no registration record for this address."
 		return row
 	case 200:
 		var payload struct {
@@ -200,6 +222,7 @@ func checkRDAP(ctx context.Context, fetch Fetcher, ip string, pub bool) checker.
 		}
 		if err := json.Unmarshal(body, &payload); err != nil || payload.Name == "" {
 			row.Status = checker.StatusError
+			row.Detail = "rdap request failed"
 			return row
 		}
 		row.Status = checker.StatusFound
@@ -207,6 +230,7 @@ func checkRDAP(ctx context.Context, fetch Fetcher, ip string, pub bool) checker.
 		return row
 	default:
 		row.Status = checker.StatusError
+		row.Detail = "rdap request failed"
 		return row
 	}
 }

@@ -27,10 +27,10 @@ func (s *origin) Check(ctx context.Context, c *http.Client, email string) checke
 
 func (s *origin) result(status checker.Status, detail string, elapsed time.Duration) checker.Result {
 	return base{
-		name:        "origin",
-		domain:      "origin.com",
-		category:    "entertainment",
-		method:      "register",
+		name:          "origin",
+		domain:        "origin.com",
+		category:      "entertainment",
+		method:        "register",
 		deleteURL:     "https://help.ea.com/en/help/account/delete-your-ea-account/",
 		securityURL:   "https://myaccount.ea.com/cp-ui/security/index",
 		foundEvidence: "EA create-account check said this email is already registered.",

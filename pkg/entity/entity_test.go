@@ -12,8 +12,19 @@ func TestValidateRejectsEmailAndIP(t *testing.T) {
 	if Validate("someone@example.com") == nil || Validate("8.8.8.8") == nil {
 		t.Fatal("expected usage errors")
 	}
+	if Validate(" 8.8.8.8 ") == nil {
+		t.Fatal("expected trimmed IP to be rejected")
+	}
 	if err := Validate("Apple Inc."); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestLoadSDNHeadered(t *testing.T) {
+	in := "ent_num,SDN_Name,SDN_Type,Program\n123,Example Corp,Entity,SDGT\n"
+	records, err := LoadSDN(strings.NewReader(in))
+	if err != nil || len(records) != 1 || records[0].Name != "Example Corp" || records[0].Program != "SDGT" {
+		t.Fatalf("%v %+v", err, records)
 	}
 }
 

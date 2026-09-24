@@ -43,24 +43,33 @@ func Save(dir string, saved Saved) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("casefile: create file: %w", err)
 	}
-	defer f.Close()
 	enc := json.NewEncoder(f)
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(saved); err != nil {
+		f.Close()
 		return "", fmt.Errorf("casefile: encode: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return "", fmt.Errorf("casefile: close: %w", err)
 	}
 	return path, nil
 }
 
 // Load reads a saved case file.
 func Load(path string) (Saved, error) {
-	f, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return Saved{}, fmt.Errorf("casefile: open: %w", err)
 	}
-	defer f.Close()
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return Saved{}, fmt.Errorf("casefile: decode: %w", err)
+	}
+	if _, ok := probe["report"]; !ok {
+		return Saved{}, fmt.Errorf("casefile: %s is not a footprint case file; use a file written by --save", path)
+	}
 	var saved Saved
-	if err := json.NewDecoder(f).Decode(&saved); err != nil {
+	if err := json.Unmarshal(data, &saved); err != nil {
 		return Saved{}, fmt.Errorf("casefile: decode: %w", err)
 	}
 	return saved, nil
@@ -79,15 +88,12 @@ func rowKey(r checker.Result) string {
 }
 
 // Diff classifies found rows between old and new. A blocked or missing
-// re-check is Unchecked, never Gone.
+// re-check is Unchecked, never Gone. A row that is found now and was not
+// found before (missing, not_found, rate_limited, or error) is Added.
 func Diff(old, new report.Document) Delta {
 	oldBy := map[string]checker.Result{}
 	for _, r := range old.Results {
 		oldBy[rowKey(r)] = r
-	}
-	newBy := map[string]checker.Result{}
-	for _, r := range new.Results {
-		newBy[rowKey(r)] = r
 	}
 
 	var d Delta
@@ -98,7 +104,7 @@ func Diff(old, new report.Document) Delta {
 		seen[key] = struct{}{}
 		or, hadOld := oldBy[key]
 		switch {
-		case nr.Status == checker.StatusFound && (!hadOld || or.Status == checker.StatusNotFound):
+		case nr.Status == checker.StatusFound && (!hadOld || or.Status != checker.StatusFound):
 			d.Added = append(d.Added, nr)
 		case nr.Status == checker.StatusFound && hadOld && or.Status == checker.StatusFound:
 			d.Still = append(d.Still, nr)
@@ -162,9 +168,12 @@ func WriteDiff(w io.Writer, d Delta) error {
 }
 
 // Merge combines documents. Conflicting non-empty subject fields fail.
-// Summary is recomputed from the concatenated rows.
+// Duplicate method+site rows keep the later document's row.
+// Summary is recomputed from the kept rows.
 func Merge(docs ...report.Document) (report.Document, error) {
 	var out report.Document
+	byKey := map[string]checker.Result{}
+	var order []string
 	for _, doc := range docs {
 		if err := mergeSubject(&out.Email, doc.Email, "email"); err != nil {
 			return report.Document{}, err
@@ -181,7 +190,17 @@ func Merge(docs ...report.Document) (report.Document, error) {
 		if err := mergeSubject(&out.SubjectEntity, doc.SubjectEntity, "subject_entity"); err != nil {
 			return report.Document{}, err
 		}
-		out.Results = append(out.Results, doc.Results...)
+		for _, r := range doc.Results {
+			key := rowKey(r)
+			if _, ok := byKey[key]; !ok {
+				order = append(order, key)
+			}
+			byKey[key] = r
+		}
+	}
+	out.Results = make([]checker.Result, 0, len(order))
+	for _, key := range order {
+		out.Results = append(out.Results, byKey[key])
 	}
 	out.Summary = report.Summarize(out.Results)
 	return out, nil
@@ -220,6 +239,9 @@ func subjectSlug(doc report.Document) string {
 			continue
 		}
 		b.WriteByte('_')
+	}
+	if b.Len() == 0 {
+		return "no_subject"
 	}
 	return b.String()
 }

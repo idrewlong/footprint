@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/idrewlong/footprint/internal/httpx"
 	"github.com/idrewlong/footprint/pkg/checker"
 )
 
@@ -28,20 +29,23 @@ func Certificates(ctx context.Context, get func(context.Context, string) ([]byte
 	body, status, err := get(ctx, reqURL)
 	if err != nil {
 		base.Status = checker.StatusError
+		base.Detail = "crt.sh response not understood"
 		return base
 	}
-	if status == 429 {
+	if httpx.IsLimited(status, body) {
 		base.Status = checker.StatusRateLimited
 		return base
 	}
 	if status != 200 {
 		base.Status = checker.StatusError
+		base.Detail = "crt.sh response not understood"
 		return base
 	}
 
 	var entries []certEntry
 	if err := json.Unmarshal(body, &entries); err != nil {
 		base.Status = checker.StatusError
+		base.Detail = "crt.sh response not understood"
 		return base
 	}
 	if len(entries) == 0 {

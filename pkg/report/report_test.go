@@ -356,3 +356,48 @@ func TestWriteHumanSubjectHeader(t *testing.T) {
 		})
 	}
 }
+
+func TestWriteHumanSubjectEmptyMessage(t *testing.T) {
+	doc := Document{
+		SubjectIP: "8.8.8.8",
+		Summary:   Summarize([]checker.Result{{Site: "ptr", Method: "infra", Status: checker.StatusNotFound}}),
+		Results:   []checker.Result{{Site: "ptr", Method: "infra", Status: checker.StatusNotFound}},
+	}
+	var buf bytes.Buffer
+	if err := WriteHuman(&buf, doc, time.Second, false); err != nil {
+		t.Fatal(err)
+	}
+	text := buf.String()
+	if !strings.Contains(text, "No network details found.") {
+		t.Fatalf("missing subject empty message:\n%s", text)
+	}
+	if strings.Contains(text, "No accounts found.") {
+		t.Fatalf("used account empty message:\n%s", text)
+	}
+}
+
+func TestWriteMarkdownEntitySection(t *testing.T) {
+	doc := Document{
+		SubjectEntity: "Apple Inc.",
+		Summary:       Summarize([]checker.Result{{Site: "ofac", Method: "entity", Status: checker.StatusFound}}),
+		Results: []checker.Result{
+			{
+				Site:     "ofac",
+				Method:   "entity",
+				Status:   checker.StatusFound,
+				Evidence: "Local OFAC SDN list matches this name as Apple Inc., program SDGT.",
+			},
+		},
+	}
+	var md bytes.Buffer
+	if err := WriteMarkdown(&md, doc, Meta{Version: "dev", Elapsed: time.Second}); err != nil {
+		t.Fatal(err)
+	}
+	out := md.String()
+	if !strings.Contains(out, "## Entity") {
+		t.Fatalf("missing Entity section:\n%s", out)
+	}
+	if !strings.Contains(out, "| ofac | entity |") {
+		t.Fatalf("missing ofac row:\n%s", out)
+	}
+}

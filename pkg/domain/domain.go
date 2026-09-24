@@ -18,23 +18,30 @@ type Resolver interface {
 }
 
 // Host returns the domain. A mailbox keeps only the part after @.
+// A trailing dot or a name with no dot is rejected.
 func Host(query string) (string, error) {
 	query = strings.TrimSpace(strings.ToLower(query))
 	if query == "" || strings.ContainsAny(query, " /\\") {
 		return "", fmt.Errorf("domain is not valid")
 	}
+	var host string
 	if strings.Contains(query, "@") {
 		addr, err := mail.ParseAddress(query)
 		if err != nil {
 			return "", fmt.Errorf("email address is not valid")
 		}
-		_, host, ok := strings.Cut(addr.Address, "@")
+		var ok bool
+		_, host, ok = strings.Cut(addr.Address, "@")
 		if !ok || host == "" || strings.Contains(host, "@") {
 			return "", fmt.Errorf("email address is not valid")
 		}
-		return host, nil
+	} else {
+		host = query
 	}
-	return query, nil
+	if strings.HasSuffix(host, ".") || !strings.Contains(host, ".") {
+		return "", fmt.Errorf("domain is not valid")
+	}
+	return host, nil
 }
 
 // Check reports MX, SPF, DMARC, and the local disposable list.

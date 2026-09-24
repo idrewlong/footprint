@@ -37,6 +37,15 @@ func TestHostStripsMailbox(t *testing.T) {
 	}
 }
 
+func TestHostRejectsInvalid(t *testing.T) {
+	if _, err := Host("localhost"); err == nil {
+		t.Fatal("expected error for name with no dot")
+	}
+	if _, err := Host("example.com."); err == nil {
+		t.Fatal("expected error for trailing dot")
+	}
+}
+
 func TestCheckDoesNotSendLocalPart(t *testing.T) {
 	dns := &fakeDNS{
 		mx: []*net.MX{{Host: "mx.example.com.", Pref: 10}},

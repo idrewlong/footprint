@@ -138,6 +138,61 @@ func TestRDAPNamesTheNetwork(t *testing.T) {
 	}
 }
 
+func TestGeoIPEmptyPlaceIsNotFound(t *testing.T) {
+	rows, err := Check(context.Background(), &fakeInfra{}, fakeGeo{place: Place{}}, nil, "8.8.8.8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := rowBySite(rows, "geoip")
+	if row.Status != checker.StatusNotFound {
+		t.Fatalf("%+v", row)
+	}
+	if row.Evidence != "The GeoIP database has no record for this address." {
+		t.Fatalf("evidence=%q", row.Evidence)
+	}
+}
+
+func TestDocumentationPrefixIsNotSent(t *testing.T) {
+	dns := &fakeInfra{}
+	fetch := &fakeFetch{}
+	rows, err := Check(context.Background(), dns, fakeGeo{}, fetch, "192.0.2.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dns.txt) != 0 || fetch.called {
+		t.Fatal("documentation address was sent")
+	}
+	for _, site := range []string{"asn", "geoip", "rdap"} {
+		row := rowBySite(rows, site)
+		if row.Status != checker.StatusError {
+			t.Fatalf("%s %+v", site, row)
+		}
+	}
+}
+
+func TestASNIPv6HasDetail(t *testing.T) {
+	rows, err := Check(context.Background(), &fakeInfra{}, nil, nil, "2001:4860:4860::8888")
+	if err != nil {
+		t.Fatal(err)
+	}
+	asn := rowBySite(rows, "asn")
+	if asn.Status != checker.StatusError || asn.Detail != "asn lookup supports IPv4 only" {
+		t.Fatalf("%+v", asn)
+	}
+}
+
+func TestRDAP404Evidence(t *testing.T) {
+	fetch := &fakeFetch{status: 404, body: []byte("missing")}
+	rows, err := Check(context.Background(), &fakeInfra{}, nil, fetch, "8.8.8.8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := rowBySite(rows, "rdap")
+	if row.Status != checker.StatusNotFound || row.Evidence != "RDAP has no registration record for this address." {
+		t.Fatalf("%+v", row)
+	}
+}
+
 func TestOpenGeoIPMissingFile(t *testing.T) {
 	_, err := OpenGeoIP(filepath.Join(t.TempDir(), "missing.mmdb"))
 	if err == nil {

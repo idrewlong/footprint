@@ -3,6 +3,7 @@ package casefile
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -76,6 +77,7 @@ func TestDiffBuckets(t *testing.T) {
 			{Site: "slack", Method: "register", Status: checker.StatusFound, Evidence: "slack was found"},
 			{Site: "zoom", Method: "register", Status: checker.StatusFound, Evidence: "zoom was found"},
 			{Site: "dropbox", Method: "register", Status: checker.StatusFound, Evidence: "dropbox was found"},
+			{Site: "reddit", Method: "register", Status: checker.StatusRateLimited},
 		},
 	}
 	newDoc := report.Document{
@@ -84,15 +86,77 @@ func TestDiffBuckets(t *testing.T) {
 			{Site: "github", Method: "register", Status: checker.StatusFound, Evidence: "github added"},
 			{Site: "slack", Method: "register", Status: checker.StatusNotFound},
 			{Site: "zoom", Method: "register", Status: checker.StatusRateLimited},
+			{Site: "reddit", Method: "register", Status: checker.StatusFound, Evidence: "reddit recovered"},
 		},
 	}
 
 	d := Diff(oldDoc, newDoc)
 
 	assertSites(t, "Still", d.Still, "adobe")
-	assertSites(t, "Added", d.Added, "github")
+	assertSites(t, "Added", d.Added, "github", "reddit")
 	assertSites(t, "Gone", d.Gone, "slack")
 	assertSites(t, "Unchecked", d.Unchecked, "zoom", "dropbox")
+}
+
+func TestLoadRejectsBareReportJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bare.json")
+	doc := report.Document{
+		Email: "me@example.com",
+		Summary: report.Summary{
+			Found: 1,
+		},
+		Results: []checker.Result{
+			{Site: "adobe", Method: "login", Status: checker.StatusFound},
+		},
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := report.WriteJSON(f, doc); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+
+	loaded, err := Load(path)
+	if err == nil {
+		t.Fatalf("expected error, got %+v", loaded)
+	}
+	if !strings.Contains(err.Error(), "not a footprint case file") || !strings.Contains(err.Error(), "--save") {
+		t.Fatalf("error = %v", err)
+	}
+	if loaded.Report.Email != "" || len(loaded.Report.Results) != 0 {
+		t.Fatalf("must not return an empty report on success path: %+v", loaded)
+	}
+}
+
+func TestMergeKeepsLaterDuplicateSite(t *testing.T) {
+	a := report.Document{
+		Email: "me@example.com",
+		Results: []checker.Result{
+			{Site: "adobe", Method: "login", Status: checker.StatusNotFound, Evidence: "earlier"},
+		},
+	}
+	b := report.Document{
+		Email: "me@example.com",
+		Results: []checker.Result{
+			{Site: "adobe", Method: "login", Status: checker.StatusFound, Evidence: "later hit"},
+		},
+	}
+	merged, err := Merge(a, b)
+	if err != nil {
+		t.Fatalf("Merge: %v", err)
+	}
+	if len(merged.Results) != 1 {
+		t.Fatalf("results len = %d, want 1", len(merged.Results))
+	}
+	if merged.Results[0].Status != checker.StatusFound || merged.Results[0].Evidence != "later hit" {
+		t.Fatalf("kept %+v", merged.Results[0])
+	}
+	if merged.Summary.Found != 1 || merged.Summary.NotFound != 0 {
+		t.Fatalf("summary = %+v", merged.Summary)
+	}
 }
 
 func TestMergeEmailAndDomain(t *testing.T) {

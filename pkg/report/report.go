@@ -101,10 +101,13 @@ func WriteHuman(w io.Writer, doc Document, elapsed time.Duration, color bool) er
 		// query already set from Email
 	case doc.SubjectDomain != "":
 		query = doc.SubjectDomain
+		empty = "No domain records found."
 	case doc.SubjectIP != "":
 		query = doc.SubjectIP
+		empty = "No network details found."
 	case doc.SubjectEntity != "":
 		query = doc.SubjectEntity
+		empty = "No public-list match found."
 	}
 	var found, limited, failed []checker.Result
 	for _, res := range doc.Results {

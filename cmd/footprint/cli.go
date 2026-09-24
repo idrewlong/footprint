@@ -50,14 +50,14 @@ Usage:
   footprint scan email <email> username <username> [flags]
   footprint user <username> [flags]
   footprint sites [flags]
-  footprint lookup domain <domain-or-email> [--certs] [--json|--md] [--save] [--case-dir path]
-  footprint lookup ip <ip> [--geoip path] [--json|--md] [--save] [--case-dir path]
-  footprint lookup entity <name> --sdn path [--json|--md] [--save] [--case-dir path]
+  footprint lookup domain <domain-or-email> [--certs] [--timeout 10s] [--json|--md] [--save] [--case-dir path]
+  footprint lookup ip <ip> [--geoip path] [--timeout 10s] [--json|--md] [--save] [--case-dir path]
+  footprint lookup entity <name> --sdn path [--timeout 10s] [--json|--md] [--save] [--case-dir path]
   footprint diff <old.json> <new.json>
   footprint note <report.json>... [--json|--md]
 
 Scan and user flags:
-  --only-found        omit non-hits from a JSON or Markdown report
+  --only-found        omit non-hits from a JSON report
   --json              write a JSON report to stdout
   --md                write a Markdown report to stdout
   --concurrency n     parallel checks (default 16)
@@ -152,7 +152,7 @@ func runScan(args []string, stdout, stderr io.Writer, catalog, profilesCatalog c
 		categories  stringList
 		names       stringList
 	)
-	fs.BoolVar(&onlyFound, "only-found", false, "omit non-hits from JSON or Markdown")
+	fs.BoolVar(&onlyFound, "only-found", false, "omit non-hits from a JSON report")
 	fs.BoolVar(&asJSON, "json", false, "write JSON to stdout")
 	fs.BoolVar(&asMarkdown, "md", false, "write Markdown to stdout")
 	fs.BoolVar(&save, "save", false, "write the report under the case directory")
@@ -162,7 +162,7 @@ func runScan(args []string, stdout, stderr io.Writer, catalog, profilesCatalog c
 	fs.Var(&categories, "category", "category to check")
 	fs.Var(&names, "site", "site to check")
 	fs.Usage = func() { fmt.Fprint(stderr, usage) }
-	flags, positionals := splitArgs(args, map[string]bool{
+	flags, positionals, splitErr := splitArgs(args, map[string]bool{
 		"only-found": true,
 		"json":       true,
 		"md":         true,
@@ -176,6 +176,10 @@ func runScan(args []string, stdout, stderr io.Writer, catalog, profilesCatalog c
 		"site":        true,
 		"case-dir":    true,
 	})
+	if splitErr != nil {
+		fmt.Fprintf(stderr, "footprint: %v\n", splitErr)
+		return 2
+	}
 	if err := fs.Parse(flags); err != nil {
 		return 2
 	}
@@ -279,12 +283,21 @@ func runScan(args []string, stdout, stderr io.Writer, catalog, profilesCatalog c
 		collect(username, profileSites)
 	}
 	prog.finish()
-	var doc report.Document
+	var full report.Document
 	if email != "" {
-		doc = report.Build(email, results, onlyFound && asJSON)
-		doc.Username = username
+		full = report.Build(email, results, false)
+		full.Username = username
 	} else {
-		doc = report.BuildUser(username, results, onlyFound && asJSON)
+		full = report.BuildUser(username, results, false)
+	}
+	doc := full
+	if onlyFound && asJSON {
+		if email != "" {
+			doc = report.Build(email, results, true)
+			doc.Username = username
+		} else {
+			doc = report.BuildUser(username, results, true)
+		}
 	}
 	elapsed := time.Since(start)
 	if err := writeReport(stdout, stderr, doc, asJSON, asMarkdown, start, elapsed); err != nil {
@@ -293,7 +306,7 @@ func runScan(args []string, stdout, stderr io.Writer, catalog, profilesCatalog c
 	if suggested := suggestUsername(results, username); suggested != "" {
 		fmt.Fprintf(stderr, "Next: footprint scan username %s\n", suggested)
 	}
-	if code := maybeSave(stderr, save, caseDir, "identity", doc, start, elapsed); code != 0 {
+	if code := maybeSave(stderr, save, caseDir, "identity", full, start, elapsed); code != 0 {
 		return code
 	}
 	return 0
@@ -332,7 +345,7 @@ func runUser(args []string, stdout, stderr io.Writer, catalog catalogFunc) int {
 		categories  stringList
 		names       stringList
 	)
-	fs.BoolVar(&onlyFound, "only-found", false, "omit non-hits from JSON or Markdown")
+	fs.BoolVar(&onlyFound, "only-found", false, "omit non-hits from a JSON report")
 	fs.BoolVar(&asJSON, "json", false, "write JSON to stdout")
 	fs.BoolVar(&asMarkdown, "md", false, "write Markdown to stdout")
 	fs.IntVar(&concurrency, "concurrency", checker.DefaultConcurrency, "parallel checks")
@@ -340,7 +353,7 @@ func runUser(args []string, stdout, stderr io.Writer, catalog catalogFunc) int {
 	fs.Var(&categories, "category", "category to check")
 	fs.Var(&names, "site", "profile to check")
 	fs.Usage = func() { fmt.Fprint(stderr, usage) }
-	flags, positionals := splitArgs(args, map[string]bool{
+	flags, positionals, splitErr := splitArgs(args, map[string]bool{
 		"only-found": true,
 		"json":       true,
 		"md":         true,
@@ -352,6 +365,10 @@ func runUser(args []string, stdout, stderr io.Writer, catalog catalogFunc) int {
 		"category":    true,
 		"site":        true,
 	})
+	if splitErr != nil {
+		fmt.Fprintf(stderr, "footprint: %v\n", splitErr)
+		return 2
+	}
 	if err := fs.Parse(flags); err != nil {
 		return 2
 	}
@@ -568,13 +585,17 @@ func runSites(args []string, stdout, stderr io.Writer, catalog catalogFunc) int 
 	fs.BoolVar(&asJSON, "json", false, "write JSON to stdout")
 	fs.Var(&categories, "category", "category to list")
 	fs.Usage = func() { fmt.Fprint(stderr, usage) }
-	flags, positionals := splitArgs(args, map[string]bool{
+	flags, positionals, splitErr := splitArgs(args, map[string]bool{
 		"json": true,
 		"h":    true,
 		"help": true,
 	}, map[string]bool{
 		"category": true,
 	})
+	if splitErr != nil {
+		fmt.Fprintf(stderr, "footprint: %v\n", splitErr)
+		return 2
+	}
 	if err := fs.Parse(flags); err != nil {
 		return 2
 	}
@@ -715,14 +736,16 @@ func runLookupDomain(args []string, stdout, stderr io.Writer, deps lookupDeps) i
 		asMarkdown bool
 		save       bool
 		caseDir    string
+		timeout    time.Duration
 	)
 	fs.BoolVar(&certs, "certs", false, "include crt.sh certificate count")
 	fs.BoolVar(&asJSON, "json", false, "write JSON to stdout")
 	fs.BoolVar(&asMarkdown, "md", false, "write Markdown to stdout")
 	fs.BoolVar(&save, "save", false, "write the report under the case directory")
 	fs.StringVar(&caseDir, "case-dir", "", "case directory")
+	fs.DurationVar(&timeout, "timeout", checker.DefaultTimeout, "lookup timeout")
 	fs.Usage = func() { fmt.Fprint(stderr, usage) }
-	flags, positionals := splitArgs(args, map[string]bool{
+	flags, positionals, splitErr := splitArgs(args, map[string]bool{
 		"certs": true,
 		"json":  true,
 		"md":    true,
@@ -731,12 +754,21 @@ func runLookupDomain(args []string, stdout, stderr io.Writer, deps lookupDeps) i
 		"help":  true,
 	}, map[string]bool{
 		"case-dir": true,
+		"timeout":  true,
 	})
+	if splitErr != nil {
+		fmt.Fprintf(stderr, "footprint: %v\n", splitErr)
+		return 2
+	}
 	if err := fs.Parse(flags); err != nil {
 		return 2
 	}
 	if asJSON && asMarkdown {
 		fmt.Fprintln(stderr, "footprint: pass only one of --json or --md")
+		return 2
+	}
+	if timeout <= 0 {
+		fmt.Fprintln(stderr, "footprint: --timeout must be greater than 0")
 		return 2
 	}
 	if len(positionals) != 1 {
@@ -759,6 +791,8 @@ func runLookupDomain(args []string, stdout, stderr io.Writer, deps lookupDeps) i
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	start := time.Now()
 	rows, err := domain.Check(ctx, dns, query, disposable)
 	if err != nil {
@@ -768,7 +802,7 @@ func runLookupDomain(args []string, stdout, stderr io.Writer, deps lookupDeps) i
 	if certs {
 		get := deps.HTTPGet
 		if get == nil {
-			get = httpGetter{client: httpx.NewClient(httpx.Config{Timeout: checker.DefaultTimeout})}.Get
+			get = httpGetter{client: httpx.NewClient(httpx.Config{Timeout: timeout})}.Get
 		}
 		rows = append(rows, domain.Certificates(ctx, get, host))
 	}
@@ -790,14 +824,16 @@ func runLookupIP(args []string, stdout, stderr io.Writer, deps lookupDeps) int {
 		asMarkdown bool
 		save       bool
 		caseDir    string
+		timeout    time.Duration
 	)
 	fs.StringVar(&geoipPath, "geoip", "", "MaxMind GeoIP database path")
 	fs.BoolVar(&asJSON, "json", false, "write JSON to stdout")
 	fs.BoolVar(&asMarkdown, "md", false, "write Markdown to stdout")
 	fs.BoolVar(&save, "save", false, "write the report under the case directory")
 	fs.StringVar(&caseDir, "case-dir", "", "case directory")
+	fs.DurationVar(&timeout, "timeout", checker.DefaultTimeout, "lookup timeout")
 	fs.Usage = func() { fmt.Fprint(stderr, usage) }
-	flags, positionals := splitArgs(args, map[string]bool{
+	flags, positionals, splitErr := splitArgs(args, map[string]bool{
 		"json": true,
 		"md":   true,
 		"save": true,
@@ -806,12 +842,21 @@ func runLookupIP(args []string, stdout, stderr io.Writer, deps lookupDeps) int {
 	}, map[string]bool{
 		"geoip":    true,
 		"case-dir": true,
+		"timeout":  true,
 	})
+	if splitErr != nil {
+		fmt.Fprintf(stderr, "footprint: %v\n", splitErr)
+		return 2
+	}
 	if err := fs.Parse(flags); err != nil {
 		return 2
 	}
 	if asJSON && asMarkdown {
 		fmt.Fprintln(stderr, "footprint: pass only one of --json or --md")
+		return 2
+	}
+	if timeout <= 0 {
+		fmt.Fprintln(stderr, "footprint: --timeout must be greater than 0")
 		return 2
 	}
 	if len(positionals) != 1 {
@@ -836,10 +881,12 @@ func runLookupIP(args []string, stdout, stderr io.Writer, deps lookupDeps) int {
 	if deps.HTTPGet != nil {
 		fetch = funcFetcher(deps.HTTPGet)
 	} else {
-		fetch = httpGetter{client: httpx.NewClient(httpx.Config{Timeout: checker.DefaultTimeout})}
+		fetch = httpGetter{client: httpx.NewClient(httpx.Config{Timeout: timeout})}
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	start := time.Now()
 	rows, err := infra.Check(ctx, dns, geo, fetch, ip)
 	if err != nil {
@@ -864,14 +911,16 @@ func runLookupEntity(args []string, stdout, stderr io.Writer, deps lookupDeps) i
 		asMarkdown bool
 		save       bool
 		caseDir    string
+		timeout    time.Duration
 	)
 	fs.StringVar(&sdnPath, "sdn", "", "local OFAC SDN CSV path")
 	fs.BoolVar(&asJSON, "json", false, "write JSON to stdout")
 	fs.BoolVar(&asMarkdown, "md", false, "write Markdown to stdout")
 	fs.BoolVar(&save, "save", false, "write the report under the case directory")
 	fs.StringVar(&caseDir, "case-dir", "", "case directory")
+	fs.DurationVar(&timeout, "timeout", checker.DefaultTimeout, "lookup timeout")
 	fs.Usage = func() { fmt.Fprint(stderr, usage) }
-	flags, positionals := splitArgs(args, map[string]bool{
+	flags, positionals, splitErr := splitArgs(args, map[string]bool{
 		"json": true,
 		"md":   true,
 		"save": true,
@@ -880,7 +929,12 @@ func runLookupEntity(args []string, stdout, stderr io.Writer, deps lookupDeps) i
 	}, map[string]bool{
 		"sdn":      true,
 		"case-dir": true,
+		"timeout":  true,
 	})
+	if splitErr != nil {
+		fmt.Fprintf(stderr, "footprint: %v\n", splitErr)
+		return 2
+	}
 	if err := fs.Parse(flags); err != nil {
 		return 2
 	}
@@ -888,40 +942,72 @@ func runLookupEntity(args []string, stdout, stderr io.Writer, deps lookupDeps) i
 		fmt.Fprintln(stderr, "footprint: pass only one of --json or --md")
 		return 2
 	}
+	if timeout <= 0 {
+		fmt.Fprintln(stderr, "footprint: --timeout must be greater than 0")
+		return 2
+	}
 	if len(positionals) != 1 {
 		fmt.Fprint(stderr, usage)
 		return 2
 	}
-	name := positionals[0]
+	name := strings.TrimSpace(positionals[0])
 	if err := entity.Validate(name); err != nil {
 		fmt.Fprintf(stderr, "footprint: %v\n", err)
 		return 2
 	}
-	var records []entity.Record
+	ofac := entity.Screen(name, nil)
 	if sdnPath != "" {
 		f, err := os.Open(sdnPath)
 		if err != nil {
-			records = nil
+			fmt.Fprintf(stderr, "footprint: sdn: %v\n", err)
+			ofac = checker.Result{
+				Site:     "ofac",
+				Domain:   name,
+				Category: "entity",
+				Method:   "entity",
+				Status:   checker.StatusError,
+				Detail:   "failed to open SDN list",
+			}
 		} else {
 			loaded, loadErr := entity.LoadSDN(f)
-			f.Close()
+			closeErr := f.Close()
 			if loadErr != nil {
-				records = nil
+				fmt.Fprintf(stderr, "footprint: sdn: %v\n", loadErr)
+				ofac = checker.Result{
+					Site:     "ofac",
+					Domain:   name,
+					Category: "entity",
+					Method:   "entity",
+					Status:   checker.StatusError,
+					Detail:   "failed to load SDN list",
+				}
+			} else if closeErr != nil {
+				fmt.Fprintf(stderr, "footprint: sdn: %v\n", closeErr)
+				ofac = checker.Result{
+					Site:     "ofac",
+					Domain:   name,
+					Category: "entity",
+					Method:   "entity",
+					Status:   checker.StatusError,
+					Detail:   "failed to load SDN list",
+				}
 			} else {
-				records = loaded
+				ofac = entity.Screen(name, loaded)
 			}
 		}
 	}
 	sec := deps.SECFetch
 	if sec == nil {
-		client := httpx.NewClient(httpx.Config{Timeout: checker.DefaultTimeout})
+		client := httpx.NewClient(httpx.Config{Timeout: timeout})
 		sec = httpGetter{client: client, ua: secUserAgent}
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	start := time.Now()
 	rows := []checker.Result{
-		entity.Screen(name, records),
+		ofac,
 		entity.SEC(ctx, sec, name),
 	}
 	doc := report.Build("", rows, false)
@@ -937,10 +1023,14 @@ func runDiff(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("diff", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() { fmt.Fprint(stderr, usage) }
-	flags, positionals := splitArgs(args, map[string]bool{
+	flags, positionals, splitErr := splitArgs(args, map[string]bool{
 		"h":    true,
 		"help": true,
 	}, nil)
+	if splitErr != nil {
+		fmt.Fprintf(stderr, "footprint: %v\n", splitErr)
+		return 2
+	}
 	if err := fs.Parse(flags); err != nil {
 		return 2
 	}
@@ -975,12 +1065,16 @@ func runNote(args []string, stdout, stderr io.Writer) int {
 	fs.BoolVar(&asJSON, "json", false, "write JSON to stdout")
 	fs.BoolVar(&asMarkdown, "md", false, "write Markdown to stdout")
 	fs.Usage = func() { fmt.Fprint(stderr, usage) }
-	flags, positionals := splitArgs(args, map[string]bool{
+	flags, positionals, splitErr := splitArgs(args, map[string]bool{
 		"json": true,
 		"md":   true,
 		"h":    true,
 		"help": true,
 	}, nil)
+	if splitErr != nil {
+		fmt.Fprintf(stderr, "footprint: %v\n", splitErr)
+		return 2
+	}
 	if err := fs.Parse(flags); err != nil {
 		return 2
 	}
@@ -1066,8 +1160,8 @@ func maybeSave(stderr io.Writer, save bool, caseDir, kind string, doc report.Doc
 
 // splitArgs lets flags follow the email, which is how the documented
 // commands are written. The standard flag parser stops at the first
-// non-flag otherwise.
-func splitArgs(args []string, boolFlags, valueFlags map[string]bool) (flags, positionals []string) {
+// non-flag otherwise. A value flag with no value is a usage error.
+func splitArgs(args []string, boolFlags, valueFlags map[string]bool) (flags, positionals []string, err error) {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--" {
@@ -1087,8 +1181,7 @@ func splitArgs(args []string, boolFlags, valueFlags map[string]bool) (flags, pos
 			flags = append(flags, arg)
 			if !hasValue {
 				if i+1 >= len(args) {
-					flags = append(flags, "")
-					continue
+					return nil, nil, fmt.Errorf("flag needs an argument: --%s", key)
 				}
 				i++
 				flags = append(flags, args[i])
@@ -1097,7 +1190,7 @@ func splitArgs(args []string, boolFlags, valueFlags map[string]bool) (flags, pos
 			positionals = append(positionals, arg)
 		}
 	}
-	return flags, positionals
+	return flags, positionals, nil
 }
 
 func normalizeEmail(raw string) (string, bool) {

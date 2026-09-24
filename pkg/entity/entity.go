@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/idrewlong/footprint/internal/httpx"
 	"github.com/idrewlong/footprint/pkg/checker"
 )
 
@@ -35,9 +36,11 @@ type Fetcher interface {
 }
 
 // Validate rejects empty strings, emails, and IP addresses so callers
-// do not treat those as organization names.
+// do not treat those as organization names. Leading and trailing space
+// is trimmed before the checks.
 func Validate(name string) error {
-	if strings.TrimSpace(name) == "" {
+	name = strings.TrimSpace(name)
+	if name == "" {
 		return fmt.Errorf("organization name is empty")
 	}
 	if _, err := mail.ParseAddress(name); err == nil {
@@ -182,10 +185,11 @@ func SEC(ctx context.Context, fetch Fetcher, name string) checker.Result {
 		row.Status = checker.StatusError
 		return row
 	}
-	switch status {
-	case 429:
+	if httpx.IsLimited(status, body) {
 		row.Status = checker.StatusRateLimited
 		return row
+	}
+	switch status {
 	case 200:
 		tickers, err := ParseTickers(bytes.NewReader(body))
 		if err != nil {

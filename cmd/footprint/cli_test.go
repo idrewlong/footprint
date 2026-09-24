@@ -394,12 +394,12 @@ func TestScanRejectsBothFormats(t *testing.T) {
 }
 
 type fakeLookupDNS struct {
-	mx       []*net.MX
-	txt      map[string][]string
-	addr     []string
-	seenMX   []string
-	seenTXT  []string
-	seenAddr []string
+	mx        []*net.MX
+	txt       map[string][]string
+	addr      []string
+	seenMX    []string
+	seenTXT   []string
+	seenAddr  []string
 	txtCalled bool
 }
 
@@ -547,6 +547,38 @@ func TestLookupEntitySECAndOFAC(t *testing.T) {
 	out := stdout.String()
 	if !strings.Contains(out, "SEC") || !strings.Contains(out, "OFAC") {
 		t.Fatalf("stdout missing SEC/OFAC:\n%s", out)
+	}
+}
+
+func TestLookupEntitySDNOpenFailure(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing.csv")
+	deps := lookupDeps{
+		SECFetch: staticFetcher{body: []byte(`{}`), status: 200},
+	}
+	var stdout, stderr bytes.Buffer
+	code := runLookup([]string{"entity", "Apple Inc.", "--sdn", missing, "--json"}, &stdout, &stderr, deps)
+	if code != 0 {
+		t.Fatalf("code %d stderr %s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "sdn:") {
+		t.Fatalf("stderr missing sdn error:\n%s", stderr.String())
+	}
+	if strings.Contains(stdout.String(), "sanctions list not configured") {
+		t.Fatalf("claimed unconfigured:\n%s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "failed to open SDN list") {
+		t.Fatalf("stdout missing open failure detail:\n%s", stdout.String())
+	}
+}
+
+func TestValueFlagMissingArgument(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := runLookup([]string{"entity", "Apple Inc.", "--sdn"}, &stdout, &stderr, lookupDeps{})
+	if code != 2 {
+		t.Fatalf("code %d stderr %s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "flag needs an argument") {
+		t.Fatalf("stderr:\n%s", stderr.String())
 	}
 }
 

@@ -216,11 +216,13 @@ Example prompts:
 Releases are built and published with **GoReleaser** on tag push via GitHub Actions:
 
 - Binaries for darwin/linux/windows on amd64/arm64
-- Homebrew formula auto-updated in `idrewlong/homebrew-tap`
 - Checksums and SBOM attached to each release
 
+There is no package-manager distribution. Users clone and build, `go install`, or download a release archive:
+
 ```bash
-brew install idrewlong/tap/footprint   # installs footprint and footprint-mcp
+git clone https://github.com/idrewlong/footprint.git && cd footprint
+go build ./cmd/footprint ./cmd/footprint-mcp
 go install github.com/idrewlong/footprint/cmd/...@latest
 ```
 
@@ -236,7 +238,7 @@ go install github.com/idrewlong/footprint/cmd/...@latest
 **v0.2: MCP**
 - [x] `footprint-mcp` over stdio with all three tools
 - [x] Delete and security URLs for every supported site
-- [ ] GoReleaser + Homebrew tap
+- [ ] GoReleaser releases on GitHub (configured; ships with the first tag)
 
 **v0.3: TUI**
 - [ ] Bubble Tea interface with live table, filters, open-in-browser, export

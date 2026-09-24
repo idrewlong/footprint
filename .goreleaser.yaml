@@ -63,27 +63,6 @@ signs:
       - "--yes"
     output: true
 
-homebrew_casks:
-  - name: footprint
-    binaries: [footprint, footprint-mcp]
-    repository:
-      owner: idrewlong
-      name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    homepage: https://github.com/idrewlong/footprint
-    description: Local OSINT tool that reports which sites have an account for an email address
-    commit_author:
-      name: goreleaserbot
-      email: bot@goreleaser.com
-    # The binaries are not notarized, so drop macOS quarantine on install.
-    hooks:
-      post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/footprint"]
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/footprint-mcp"]
-          end
-
 changelog:
   sort: asc
   filters:

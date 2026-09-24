@@ -6,19 +6,23 @@ Find accounts registered to an email address, and public profiles for a username
 
 ## Install
 
+Clone the repo and build it. You need Go (the version in `go.mod`); there are no other dependencies.
+
 ```bash
-brew install idrewlong/tap/footprint          # installs footprint and footprint-mcp
+git clone https://github.com/idrewlong/footprint.git
+cd footprint
+go build -o footprint ./cmd/footprint
+go build -o footprint-mcp ./cmd/footprint-mcp
+./footprint scan email me@example.com
+```
+
+Or install both binaries into `$GOPATH/bin` without cloning:
+
+```bash
 go install github.com/idrewlong/footprint/cmd/...@latest
 ```
 
-Release archives for Linux, macOS, and Windows (amd64 and arm64) are on the GitHub releases page, each with an SPDX SBOM and a cosign-signed checksum file.
-
-From a checkout:
-
-```bash
-go build -o footprint ./cmd/footprint
-go build -o footprint-mcp ./cmd/footprint-mcp
-```
+Prebuilt archives for Linux, macOS, and Windows (amd64 and arm64) are also on the GitHub releases page, each with an SPDX SBOM and a cosign-signed checksum file, for anyone without Go.
 
 ### Verifying a release
 
@@ -154,7 +158,7 @@ go test -race ./...     # fixture tests; never touch the network
 go test -tags live -run '^TestLive(UnregisteredAddress|Canary)$' -v ./pkg/sites/   # hits real sites
 ```
 
-CI runs gofmt, `go mod tidy`, `go vet`, `go test -race`, `govulncheck`, and `goreleaser check` on every push and pull request. The live checks run only from the manually triggered `live` workflow: each site is checked with a random address (found or error fails; rate limited is skipped). Set the `FOOTPRINT_LIVE_CANARY_EMAIL` secret and `FOOTPRINT_LIVE_CANARY_SITES` variable to also confirm an address you control is still found, which catches a check that always says not found. Pushing a `v*` tag runs GoReleaser, which needs a `HOMEBREW_TAP_GITHUB_TOKEN` secret with write access to `idrewlong/homebrew-tap`.
+CI runs gofmt, `go mod tidy`, `go vet`, `go test -race`, `govulncheck`, and `goreleaser check` on every push and pull request. The live checks run only from the manually triggered `live` workflow: each site is checked with a random address (found or error fails; rate limited is skipped). Set the `FOOTPRINT_LIVE_CANARY_EMAIL` secret and `FOOTPRINT_LIVE_CANARY_SITES` variable to also confirm an address you control is still found, which catches a check that always says not found. Pushing a `v*` tag runs GoReleaser, which publishes the prebuilt archives to GitHub Releases; it needs no secrets beyond the workflow's own token.
 
 ## Layout
 

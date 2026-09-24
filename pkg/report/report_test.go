@@ -271,3 +271,88 @@ func TestWriteMarkdownUsernameOnly(t *testing.T) {
 		t.Fatalf("unchecked:\n%s", out)
 	}
 }
+
+func TestWriteMarkdownGroupsDomainAndInfrastructure(t *testing.T) {
+	doc := Build("me@example.com", []checker.Result{
+		{Site: "adobe", Method: "login", Status: checker.StatusFound, Evidence: "Sign-in lookup said this email is already registered."},
+		{Site: "mx", Method: "dns", Status: checker.StatusFound, Evidence: "MX records point at mx.example.com."},
+	}, false)
+	doc.SubjectDomain = "example.com"
+	var md bytes.Buffer
+	if err := WriteMarkdown(&md, doc, Meta{Version: "dev", Elapsed: time.Second}); err != nil {
+		t.Fatal(err)
+	}
+	out := md.String()
+	findings := strings.Index(out, "## Findings")
+	domain := strings.Index(out, "## Domain")
+	if findings < 0 || domain < findings {
+		t.Fatalf("sections:\n%s", out)
+	}
+	findingsBody := out[findings:domain]
+	if !strings.Contains(findingsBody, "| adobe | login |") {
+		t.Fatalf("adobe not under Findings:\n%s", out)
+	}
+	if strings.Contains(findingsBody, "| mx |") {
+		t.Fatalf("mx stayed under Findings:\n%s", out)
+	}
+	if !strings.Contains(out[domain:], "| mx | dns | MX records point at mx.example.com. |") {
+		t.Fatalf("mx not under Domain:\n%s", out)
+	}
+	if !strings.Contains(out, "**Bottom line:** 1 email match for `me@example.com`.") {
+		t.Fatalf("bottom line counted MX as an email match:\n%s", out)
+	}
+	if strings.Contains(out, "2 email matches") {
+		t.Fatalf("bottom line counted MX as an email match:\n%s", out)
+	}
+
+	ipDoc := Document{
+		SubjectIP: "8.8.8.8",
+		Summary:   Summarize([]checker.Result{{Site: "geoip", Method: "infra", Status: checker.StatusFound}}),
+		Results: []checker.Result{
+			{
+				Site:     "geoip",
+				Method:   "infra",
+				Status:   checker.StatusFound,
+				Evidence: "GeoIP database places this address in Ashburn, Virginia, US. This is the network's city, not a person or a street address.",
+			},
+		},
+	}
+	md.Reset()
+	if err := WriteMarkdown(&md, ipDoc, Meta{Version: "dev", Elapsed: time.Second}); err != nil {
+		t.Fatal(err)
+	}
+	ipOut := md.String()
+	if !strings.Contains(ipOut, "## Infrastructure") {
+		t.Fatalf("missing Infrastructure:\n%s", ipOut)
+	}
+	if !strings.Contains(ipOut, "not a person or a street address") {
+		t.Fatalf("missing geoip evidence:\n%s", ipOut)
+	}
+	if strings.Contains(ipOut, "No email matches") {
+		t.Fatalf("IP-only note described itself as email:\n%s", ipOut)
+	}
+}
+
+func TestWriteHumanSubjectHeader(t *testing.T) {
+	cases := []struct {
+		name string
+		doc  Document
+		want string
+	}{
+		{name: "domain", doc: Document{SubjectDomain: "example.com"}, want: "example.com"},
+		{name: "ip", doc: Document{SubjectIP: "8.8.8.8"}, want: "8.8.8.8"},
+		{name: "entity", doc: Document{SubjectEntity: "Apple Inc."}, want: "Apple Inc."},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := WriteHuman(&buf, tc.doc, time.Second, false); err != nil {
+				t.Fatal(err)
+			}
+			first := strings.SplitN(buf.String(), "\n", 2)[0]
+			if !strings.HasPrefix(first, tc.want) {
+				t.Fatalf("header %q, want prefix %q\nfull:\n%s", first, tc.want, buf.String())
+			}
+		})
+	}
+}

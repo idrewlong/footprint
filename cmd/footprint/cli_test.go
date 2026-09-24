@@ -559,6 +559,80 @@ func (s staticFetcher) Get(ctx context.Context, url string) ([]byte, int, error)
 	return s.body, s.status, nil
 }
 
+func TestSuggestUsernameFromProfileURL(t *testing.T) {
+	emailCatalog := func(categories, names []string) ([]checker.Site, error) {
+		return []checker.Site{
+			fakeProfileURL{
+				name: "github", domain: "github.com", category: "dev", method: "register",
+				status: checker.StatusFound, profileURL: "https://github.com/octocat",
+			},
+		}, nil
+	}
+	var stdout, stderr bytes.Buffer
+	code := runCommand([]string{"scan", "email", "me@example.com", "--json"}, &stdout, &stderr, emailCatalog, nil)
+	if code != 0 {
+		t.Fatalf("code %d stderr %s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "Next: footprint scan username octocat\n") {
+		t.Fatalf("missing Next line:\n%s", stderr.String())
+	}
+	if strings.Contains(stdout.String(), "Next:") {
+		t.Fatalf("Next leaked to stdout:\n%s", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	profileCatalog := func(categories, names []string) ([]checker.Site, error) {
+		return []checker.Site{
+			fakeProfile{name: "asciinema", domain: "asciinema.org", category: "dev"},
+		}, nil
+	}
+	code = runCommand([]string{"scan", "email", "me@example.com", "username", "octocat", "--json"}, &stdout, &stderr, emailCatalog, profileCatalog)
+	if code != 0 {
+		t.Fatalf("with username: code %d stderr %s", code, stderr.String())
+	}
+	if strings.Contains(stderr.String(), "Next:") {
+		t.Fatalf("suggested username when one was already set:\n%s", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	deepCatalog := func(categories, names []string) ([]checker.Site, error) {
+		return []checker.Site{
+			fakeProfileURL{
+				name: "github", domain: "github.com", category: "dev", method: "register",
+				status: checker.StatusFound, profileURL: "https://github.com/octocat/repo",
+			},
+		}, nil
+	}
+	code = runCommand([]string{"scan", "email", "me@example.com", "--json"}, &stdout, &stderr, deepCatalog, nil)
+	if code != 0 {
+		t.Fatalf("deep path: code %d stderr %s", code, stderr.String())
+	}
+	if strings.Contains(stderr.String(), "Next:") {
+		t.Fatalf("suggested username from a multi-segment path:\n%s", stderr.String())
+	}
+}
+
+type fakeProfileURL struct {
+	name, domain, category, method string
+	status                         checker.Status
+	profileURL                     string
+}
+
+func (f fakeProfileURL) Name() string     { return f.name }
+func (f fakeProfileURL) Domain() string   { return f.domain }
+func (f fakeProfileURL) Category() string { return f.category }
+func (f fakeProfileURL) Method() string   { return f.method }
+func (f fakeProfileURL) Check(ctx context.Context, c *http.Client, email string) checker.Result {
+	return checker.Result{
+		Status:     f.status,
+		ProfileURL: f.profileURL,
+		Evidence:   "Signup endpoint said this email is already registered.",
+		Duration:   5 * time.Millisecond,
+	}
+}
+
 func TestScanSaveCaseFile(t *testing.T) {
 	catalog := func(categories, names []string) ([]checker.Site, error) {
 		return []checker.Site{

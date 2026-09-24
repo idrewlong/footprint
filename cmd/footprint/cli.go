@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/mail"
+	"net/url"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -289,10 +290,34 @@ func runScan(args []string, stdout, stderr io.Writer, catalog, profilesCatalog c
 	if err := writeReport(stdout, stderr, doc, asJSON, asMarkdown, start, elapsed); err != nil {
 		return 1
 	}
+	if suggested := suggestUsername(results, username); suggested != "" {
+		fmt.Fprintf(stderr, "Next: footprint scan username %s\n", suggested)
+	}
 	if code := maybeSave(stderr, save, caseDir, "identity", doc, start, elapsed); code != 0 {
 		return code
 	}
 	return 0
+}
+
+func suggestUsername(results []checker.Result, username string) string {
+	if username != "" {
+		return ""
+	}
+	for _, res := range results {
+		if res.Status != checker.StatusFound || res.ProfileURL == "" {
+			continue
+		}
+		u, err := url.Parse(res.ProfileURL)
+		if err != nil {
+			continue
+		}
+		parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+		if len(parts) != 1 || parts[0] == "" || strings.Contains(parts[0], ".") {
+			continue
+		}
+		return parts[0]
+	}
+	return ""
 }
 
 func runUser(args []string, stdout, stderr io.Writer, catalog catalogFunc) int {

@@ -15,12 +15,16 @@ Design detail lives in `project-overview.md`. Follow that document when this fil
 
 ## Layout
 
-Site logic lives only in `pkg/sites/`, one file per site, registered in `init`. `cmd/footprint`, the TUI, and `cmd/footprint-mcp` call `pkg/checker` and render `Result` values. They do not know how a site is checked.
+Site logic lives only in `pkg/sites/`, one file per site, registered in `init`. `cmd/footprint`, the TUI, and `cmd/footprint-mcp` call `pkg/checker` and render `Result` values. They do not know how a site is checked. Do not start `cmd/footprint-mcp` until the local modules pass `go test ./...`.
 
 | Path | Owns |
 |---|---|
 | `pkg/checker` | Concurrency, per-check timeouts, streaming results, per-domain backoff |
 | `pkg/sites` | `Site` implementations |
+| `pkg/domain` | Domain DNS and certificate lookups |
+| `pkg/infra` | IP reverse DNS, GeoIP, ASN, and RDAP |
+| `pkg/entity` | Local OFAC screening and SEC ticker lookup |
+| `pkg/casefile` | Local case save, load, diff, and merge |
 | `pkg/report` | JSON, table, and markdown rendering |
 | `internal/httpx` | Shared client, user-agent rotation, cookie jar |
 | `testdata/<site>/` | Recorded HTTP fixtures |

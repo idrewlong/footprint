@@ -97,6 +97,14 @@ func WriteHuman(w io.Writer, doc Document, elapsed time.Duration, color bool) er
 	case doc.Username != "":
 		query = doc.Username
 		empty = "No profiles found."
+	case doc.Email != "":
+		// query already set from Email
+	case doc.SubjectDomain != "":
+		query = doc.SubjectDomain
+	case doc.SubjectIP != "":
+		query = doc.SubjectIP
+	case doc.SubjectEntity != "":
+		query = doc.SubjectEntity
 	}
 	var found, limited, failed []checker.Result
 	for _, res := range doc.Results {
@@ -365,6 +373,9 @@ func WriteMarkdown(w io.Writer, doc Document, meta Meta) error {
 	b.WriteString("# Footprint\n\n")
 	fmt.Fprintf(&b, "**Bottom line:** %s\n\n", bottomLine(doc))
 	writeFindings(&b, doc)
+	writeGrouped(&b, doc, "dns", "Domain")
+	writeGrouped(&b, doc, "infra", "Infrastructure")
+	writeGrouped(&b, doc, "entity", "Entity")
 	writeCoverage(&b, doc, meta)
 	writeActions(&b, doc)
 	_, err := io.WriteString(w, b.String())
@@ -372,18 +383,24 @@ func WriteMarkdown(w io.Writer, doc Document, meta Meta) error {
 }
 
 func bottomLine(doc Document) string {
-	var emailHits, breaches, profiles int
+	var emailHits, breaches, profiles, dnsHits, infraHits, entityHits int
 	for _, res := range doc.Results {
 		if res.Status != checker.StatusFound {
 			continue
 		}
 		switch res.Method {
+		case "register", "login", "password_reset":
+			emailHits++
 		case "breach":
 			breaches++
 		case "profile":
 			profiles++
-		default:
-			emailHits++
+		case "dns":
+			dnsHits++
+		case "infra":
+			infraHits++
+		case "entity":
+			entityHits++
 		}
 	}
 	unchecked := doc.Summary.RateLimited + doc.Summary.Error
@@ -414,6 +431,16 @@ func bottomLine(doc Document) string {
 		}
 		parts = append(parts, clause)
 	}
+	if doc.Email == "" && doc.Username == "" {
+		switch {
+		case doc.SubjectDomain != "":
+			parts = append(parts, subjectNotes(dnsHits, "domain note", "domain notes", "Domain notes", doc.SubjectDomain))
+		case doc.SubjectIP != "":
+			parts = append(parts, subjectNotes(infraHits, "network note", "network notes", "Network notes", doc.SubjectIP))
+		case doc.SubjectEntity != "":
+			parts = append(parts, subjectNotes(entityHits, "entity note", "entity notes", "Entity notes", doc.SubjectEntity))
+		}
+	}
 	if len(parts) == 0 {
 		parts = append(parts, "No findings")
 	}
@@ -427,10 +454,20 @@ func bottomLine(doc Document) string {
 	return line + "."
 }
 
+func subjectNotes(n int, one, many, zeroLead, subject string) string {
+	if n == 0 {
+		return zeroLead + " for " + codeSpan(subject)
+	}
+	return countPhrase(n, one, many) + " for " + codeSpan(subject)
+}
+
 func writeFindings(b *strings.Builder, doc Document) {
-	b.WriteString("## Findings\n\n")
-	found := foundRows(doc.Results)
+	found := findingsRows(doc.Results)
 	if len(found) == 0 {
+		if doc.Email == "" && doc.Username == "" {
+			return
+		}
+		b.WriteString("## Findings\n\n")
 		switch {
 		case doc.Email != "" && doc.Username != "":
 			b.WriteString("No accounts or profiles found.\n\n")
@@ -441,6 +478,7 @@ func writeFindings(b *strings.Builder, doc Document) {
 		}
 		return
 	}
+	b.WriteString("## Findings\n\n")
 	fromMailbox := usernameFromMailbox(doc.Email, doc.Username)
 	sort.SliceStable(found, func(i, j int) bool {
 		si, sj := findingRank(found[i], fromMailbox), findingRank(found[j], fromMailbox)
@@ -454,6 +492,39 @@ func writeFindings(b *strings.Builder, doc Document) {
 		fmt.Fprintf(b, "| %s | %s | %s |\n", mdCell(res.Site), mdCell(res.Method), mdCell(findingEvidence(res, fromMailbox)))
 	}
 	b.WriteString("\n")
+}
+
+func writeGrouped(b *strings.Builder, doc Document, method, title string) {
+	var rows []checker.Result
+	for _, res := range doc.Results {
+		if res.Status == checker.StatusFound && res.Method == method {
+			rows = append(rows, res)
+		}
+	}
+	if len(rows) == 0 {
+		return
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].Site < rows[j].Site })
+	fmt.Fprintf(b, "## %s\n\n", title)
+	b.WriteString("| Site | Method | Evidence |\n| --- | --- | --- |\n")
+	for _, res := range rows {
+		fmt.Fprintf(b, "| %s | %s | %s |\n", mdCell(res.Site), mdCell(res.Method), mdCell(findingEvidence(res, false)))
+	}
+	b.WriteString("\n")
+}
+
+func findingsRows(results []checker.Result) []checker.Result {
+	var found []checker.Result
+	for _, res := range results {
+		if res.Status != checker.StatusFound {
+			continue
+		}
+		switch res.Method {
+		case "register", "login", "password_reset", "breach", "profile":
+			found = append(found, res)
+		}
+	}
+	return found
 }
 
 func findingEvidence(res checker.Result, fromMailbox bool) string {
@@ -569,16 +640,6 @@ func writeActions(b *strings.Builder, doc Document) {
 			fmt.Fprintf(b, "  - Delete: %s\n", res.DeleteURL)
 		}
 	}
-}
-
-func foundRows(results []checker.Result) []checker.Result {
-	var found []checker.Result
-	for _, res := range results {
-		if res.Status == checker.StatusFound {
-			found = append(found, res)
-		}
-	}
-	return found
 }
 
 func breachNames(results []checker.Result) []string {

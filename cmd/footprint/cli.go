@@ -44,7 +44,8 @@ Usage:
   footprint lookup entity <name> --sdn path [--timeout 10s] [--json|--md] [--save] [--case-dir path]
   footprint diff <old.json> <new.json>
   footprint note <report.json>... [--json|--md]
-  footprint verify [case-dir] [--case-dir path]
+  footprint verify [case-dir] [--case-dir path] [--pubkey file] [--head hash]
+  footprint keygen
   footprint export <case.json>... --format graphml|neo4j|stix|misp|maltego [--out file]
 
 Scans are passive by default: no check emails or otherwise alerts the address.
@@ -67,7 +68,11 @@ Scan and user flags:
   --authority text    legal authority recorded with a saved report (required with --save)
 
 A saved report is logged to a signed, append-only audit ledger in the case
-directory. 'footprint verify' re-checks that ledger and the saved files.
+directory. The signing key is kept outside it: FOOTPRINT_SIGN_KEY, or the
+user config directory ('footprint keygen' shows where). 'footprint verify'
+re-checks the ledger and saved files against a trusted public key (--pubkey,
+default the one beside your signing key). Each save prints the ledger head;
+record it elsewhere and pass --head to catch entries cut from the end.
 
 Sites flags:
   --category name     list one category
@@ -138,6 +143,8 @@ func runCommand(args []string, stdout, stderr io.Writer, catalog, profilesCatalo
 		return runVerify(args[1:], stdout, stderr)
 	case "export":
 		return runExport(args[1:], stdout, stderr)
+	case "keygen":
+		return runKeygen(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n\n%s", args[0], usage)
 		return 2
@@ -255,6 +262,9 @@ func maybeSave(stderr io.Writer, req saveRequest, doc report.Document, start tim
 		return 1
 	}
 	fmt.Fprintf(stderr, "saved %s\n", path)
+	if head, err := casefile.Head(dir); err == nil && head != "" {
+		fmt.Fprintf(stderr, "audit head %s (record it elsewhere; footprint verify --head checks it)\n", head)
+	}
 	return 0
 }
 

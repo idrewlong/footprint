@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/ed25519"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -21,13 +20,15 @@ import (
 // case. Each entry names the case, the operator, the legal authority, and a
 // SHA-256 of the saved file. Entries are chained: an entry commits to the
 // previous entry's hash, so a removed or altered entry breaks the chain. Each
-// entry is signed with a local Ed25519 key, so an entry cannot be forged
-// without the key. This is what lets an operator show a case file, and the
-// order of a case's steps, have not been altered after the fact.
+// entry is signed with an Ed25519 key kept outside the case directory (see
+// signkey.go), and Verify accepts only signatures from keys the operator
+// names as trusted, so the chain cannot be rebuilt under a fresh key. The
+// chain alone cannot show that entries were cut from the end, so Verify can
+// also check a head hash the operator recorded elsewhere. Together these let
+// an operator show a case file, and the order of a case's steps, have not
+// been altered after the fact.
 const (
 	ledgerName  = "audit.log"
-	keyName     = "footprint-ed25519.key"
-	pubName     = "footprint-ed25519.pub"
 	ledgerPerm  = 0o600
 	keyPerm     = 0o600
 	pubPerm     = 0o644
@@ -70,42 +71,6 @@ func (e Entry) entryHash() string {
 	return hex.EncodeToString(sum[:])
 }
 
-// signingKey loads the ledger's Ed25519 private key, creating one on first
-// use. The key never leaves the case directory and is written 0600.
-func signingKey(dir string) (ed25519.PrivateKey, error) {
-	path := filepath.Join(dir, keyName)
-	data, err := os.ReadFile(path)
-	if err == nil {
-		raw, decErr := base64.StdEncoding.DecodeString(strings.TrimSpace(string(data)))
-		if decErr != nil {
-			return nil, fmt.Errorf("casefile: decode signing key: %w", decErr)
-		}
-		if len(raw) != ed25519.PrivateKeySize {
-			return nil, errors.New("casefile: signing key has the wrong size")
-		}
-		return ed25519.PrivateKey(raw), nil
-	}
-	if !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("casefile: read signing key: %w", err)
-	}
-	pub, priv, genErr := ed25519.GenerateKey(rand.Reader)
-	if genErr != nil {
-		return nil, fmt.Errorf("casefile: generate signing key: %w", genErr)
-	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, fmt.Errorf("casefile: create dir: %w", err)
-	}
-	encPriv := base64.StdEncoding.EncodeToString(priv)
-	if err := os.WriteFile(path, []byte(encPriv+"\n"), keyPerm); err != nil {
-		return nil, fmt.Errorf("casefile: write signing key: %w", err)
-	}
-	encPub := base64.StdEncoding.EncodeToString(pub)
-	if err := os.WriteFile(filepath.Join(dir, pubName), []byte(encPub+"\n"), pubPerm); err != nil {
-		return nil, fmt.Errorf("casefile: write public key: %w", err)
-	}
-	return priv, nil
-}
-
 // lastEntryHash returns the hash of the final ledger entry, or "" when the
 // ledger does not exist yet. It does not verify the chain.
 func lastEntryHash(dir string) (string, error) {
@@ -136,7 +101,16 @@ func appendLedger(dir, path string, saved Saved) (Entry, error) {
 	if err != nil {
 		return Entry{}, fmt.Errorf("casefile: hash case file: %w", err)
 	}
-	priv, err := signingKey(dir)
+	keyPath, err := SigningKeyPath()
+	if err != nil {
+		return Entry{}, err
+	}
+	if inside, err := keyInsideDir(keyPath, dir); err != nil {
+		return Entry{}, fmt.Errorf("casefile: locate signing key: %w", err)
+	} else if inside {
+		return Entry{}, fmt.Errorf("casefile: signing key %s is inside the case directory; keep it elsewhere so the ledger cannot be re-signed by whoever can edit it", keyPath)
+	}
+	priv, _, err := LoadOrCreateSigningKey(keyPath)
 	if err != nil {
 		return Entry{}, err
 	}
@@ -207,26 +181,54 @@ func ReadLedger(dir string) ([]Entry, error) {
 	return entries, nil
 }
 
+// VerifyOptions names what the ledger is checked against. Trusted must hold
+// at least one key: a signature is only evidence when the verifier chooses
+// the key, not the entry being verified. Head, when set, is a ledger hash
+// (or a prefix of at least 12 hex characters) recorded outside the case
+// directory; it must still be in the ledger, which catches cut-off entries.
+type VerifyOptions struct {
+	Trusted []ed25519.PublicKey
+	Head    string
+}
+
 // VerifyReport is the outcome of checking a case directory's audit ledger.
 type VerifyReport struct {
-	Entries  int
-	Problems []string
+	Entries int
+	// Head is the hash of the last entry, to record somewhere independent.
+	Head string
+	// SinceHead counts entries appended after the checked Head.
+	SinceHead int
+	Problems  []string
 }
 
 // OK reports whether the ledger verified with no problems.
 func (v VerifyReport) OK() bool { return len(v.Problems) == 0 }
 
+// ErrNoTrustedKey is returned when Verify is given no key to trust.
+var ErrNoTrustedKey = errors.New("casefile: no trusted public key to verify signatures against")
+
+const minHeadPrefix = 12
+
 // Verify re-checks the audit ledger of a case directory. It confirms that
-// every entry's signature is valid, that each entry links to the previous
-// one, and that each referenced case file is present and unchanged. It names
-// every problem it finds rather than stopping at the first.
-func Verify(dir string) (VerifyReport, error) {
+// every entry is signed by a trusted key, that each entry links to the
+// previous one, that each referenced case file is present and unchanged,
+// and, when opts.Head is set, that the recorded head is still in the ledger.
+// It names every problem it finds rather than stopping at the first.
+func Verify(dir string, opts VerifyOptions) (VerifyReport, error) {
+	if len(opts.Trusted) == 0 {
+		return VerifyReport{}, ErrNoTrustedKey
+	}
+	head := strings.ToLower(strings.TrimSpace(opts.Head))
+	if head != "" && len(head) < minHeadPrefix {
+		return VerifyReport{}, fmt.Errorf("casefile: head %q is too short; give at least %d hex characters", opts.Head, minHeadPrefix)
+	}
 	entries, err := ReadLedger(dir)
 	if err != nil {
 		return VerifyReport{}, err
 	}
 	report := VerifyReport{Entries: len(entries)}
 	prev := genesisPrev
+	headAt := -1
 	for i, entry := range entries {
 		label := fmt.Sprintf("entry %d (%s)", i+1, entry.File)
 
@@ -236,29 +238,54 @@ func Verify(dir string) (VerifyReport, error) {
 		if got := entry.entryHash(); got != entry.Hash {
 			report.Problems = append(report.Problems, fmt.Sprintf("%s: entry hash does not match its contents", label))
 		}
-		if !validSignature(entry) {
-			report.Problems = append(report.Problems, fmt.Sprintf("%s: signature is not valid", label))
+		if !trustedSignature(entry, opts.Trusted) {
+			report.Problems = append(report.Problems, fmt.Sprintf("%s: not signed by a trusted key", label))
 		}
 		if fileHash, ferr := sha256File(filepath.Join(dir, entry.File)); ferr != nil {
 			report.Problems = append(report.Problems, fmt.Sprintf("%s: case file missing or unreadable", label))
 		} else if fileHash != entry.FileSHA256 {
 			report.Problems = append(report.Problems, fmt.Sprintf("%s: case file has been modified since it was saved", label))
 		}
+		if head != "" && headAt < 0 && strings.HasPrefix(entry.Hash, head) {
+			headAt = i
+		}
 		prev = entry.Hash
+	}
+	report.Head = prev
+	if head != "" {
+		if headAt < 0 {
+			report.Problems = append(report.Problems, fmt.Sprintf("recorded head %s is not in the ledger: entries were removed or the ledger was rewritten", short(head)))
+		} else {
+			report.SinceHead = len(entries) - 1 - headAt
+		}
 	}
 	return report, nil
 }
 
-func validSignature(entry Entry) bool {
-	pub, err := base64.StdEncoding.DecodeString(entry.PubKey)
-	if err != nil || len(pub) != ed25519.PublicKeySize {
+// trustedSignature reports whether the entry verifies under one of the
+// trusted keys. The key named in the entry is not believed on its own; it
+// must equal a trusted key, and the signature is checked with that key.
+func trustedSignature(entry Entry, trusted []ed25519.PublicKey) bool {
+	named, err := base64.StdEncoding.DecodeString(entry.PubKey)
+	if err != nil {
 		return false
 	}
 	sig, err := base64.StdEncoding.DecodeString(entry.Signature)
 	if err != nil {
 		return false
 	}
-	return ed25519.Verify(ed25519.PublicKey(pub), []byte(entry.Hash), sig)
+	for _, key := range trusted {
+		if bytes.Equal(named, key) && ed25519.Verify(key, []byte(entry.Hash), sig) {
+			return true
+		}
+	}
+	return false
+}
+
+// Head returns the hash of the last ledger entry in dir, or "" when there
+// is no ledger yet. It does not verify the chain.
+func Head(dir string) (string, error) {
+	return lastEntryHash(dir)
 }
 
 func short(hash string) string {

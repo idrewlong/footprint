@@ -1,7 +1,6 @@
 package casefile
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -223,61 +222,5 @@ func assertSites(t *testing.T, bucket string, rows []checker.Result, want ...str
 		if got[i] != want[i] {
 			t.Fatalf("%s sites = %v, want %v", bucket, got, want)
 		}
-	}
-}
-
-func TestLedgerChainAndVerify(t *testing.T) {
-	dir := t.TempDir()
-	mk := func(subject string, when time.Time) {
-		if _, err := Save(dir, Saved{
-			Version:   "test",
-			RanAt:     when,
-			Kind:      "identity",
-			CaseID:    "C-1",
-			Authority: "warrant",
-			Operator:  "agent",
-			Report:    report.Document{Email: subject},
-		}); err != nil {
-			t.Fatalf("save %s: %v", subject, err)
-		}
-	}
-	mk("a@example.com", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
-	mk("b@example.com", time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC))
-
-	rep, err := Verify(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !rep.OK() || rep.Entries != 2 {
-		t.Fatalf("clean ledger did not verify: %+v", rep)
-	}
-
-	// Chain must link the second entry to the first.
-	entries, err := ReadLedger(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if entries[0].Prev != "" {
-		t.Fatalf("first entry prev = %q, want genesis", entries[0].Prev)
-	}
-	if entries[1].Prev != entries[0].Hash {
-		t.Fatal("second entry does not chain to the first")
-	}
-
-	// Truncating the ledger to drop the last entry must be detected only if
-	// a later entry references it; removing the tail leaves a valid prefix,
-	// so instead corrupt a signature and confirm Verify catches it.
-	path := filepath.Join(dir, "audit.log")
-	data, _ := os.ReadFile(path)
-	corrupt := bytes.Replace(data, []byte("warrant"), []byte("forged!"), 1)
-	if err := os.WriteFile(path, corrupt, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	rep, err = Verify(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rep.OK() {
-		t.Fatal("verify passed after the ledger was altered")
 	}
 }

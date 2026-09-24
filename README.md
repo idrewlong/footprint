@@ -63,7 +63,8 @@ Each lookup accepts `--json`, `--md`, `--timeout` (default 10s), `--save`, and `
 ```bash
 footprint scan email me@example.com --save --case-dir ./cases --case-id C-2026-001 --authority "warrant 24-1234"
 footprint lookup domain example.com --save --case-dir ./cases --case-id C-2026-001 --authority "warrant 24-1234"
-footprint verify --case-dir ./cases
+footprint keygen
+footprint verify --case-dir ./cases --head <hash from the last save>
 footprint diff old.json new.json
 footprint note a.json b.json
 footprint note a.json b.json --json
@@ -73,7 +74,11 @@ footprint note a.json b.json --json
 
 **Purpose and authority.** A saved case must carry `--case-id` and `--authority`, so every durable record is tied to the case and the legal basis for the lookup. The operator name (from `FOOTPRINT_OPERATOR`, `USER`, or `LOGNAME`) is recorded with it. Unsaved runs are not gated.
 
-**Tamper-evident audit ledger.** Each save is appended to a signed, append-only ledger (`audit.log`) in the case directory. Every entry records the case, authority, operator, tool version, and a SHA-256 of the saved file, and commits to the previous entry's hash, forming a chain. Entries are signed with a local Ed25519 key (`footprint-ed25519.key`, mode `0600`, generated on first save). `footprint verify` re-checks every saved file against its recorded hash, confirms the chain links, and verifies each signature — so you can show a case file, and the order of a case's steps, have not been altered. It exits non-zero on any problem.
+**Tamper-evident audit ledger.** Each save is appended to a signed, append-only ledger (`audit.log`) in the case directory. Every entry records the case, authority, operator, tool version, and a SHA-256 of the saved file, and commits to the previous entry's hash, forming a chain. Entries are signed with an Ed25519 key that is kept **outside** the case directory, at `FOOTPRINT_SIGN_KEY` or the user config directory (`footprint keygen` creates it and prints where it is and its fingerprint). A save refuses a key inside the case directory, because whoever can edit the ledger could then re-sign it.
+
+`footprint verify` re-checks every saved file against its recorded hash, confirms the chain links, and checks each signature against a public key *you* trust: `--pubkey <file>` (repeatable), or by default the `.pub` beside your own signing key. The key written inside the ledger is never trusted on its own, so a chain rebuilt under a different key fails. With no trusted key available, `verify` fails rather than passing. A chain cannot show that entries were cut from its end, so each save prints the ledger head on stderr (`audit head <hash>`) and `verify` prints it too; record it somewhere independent and pass `--head <hash>` to confirm it is still in the ledger. `verify` exits non-zero on any problem.
+
+Ledgers written before the key moved were signed with `footprint-ed25519.key` inside the case directory. Verifying them means trusting that key explicitly with `--pubkey <case-dir>/footprint-ed25519.pub`, with the weaker guarantee that implies.
 
 `diff` prints four sections. Added means found now and not found before. Gone means found before and `not_found` now. Unchecked means it was found before and the new row is rate limited, an error, or missing. Still is the count of hits in both files.
 

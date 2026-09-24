@@ -6,7 +6,7 @@ Items are grouped by the milestone they fit best. The last section holds items t
 
 ## Now: finish v0.1
 
-- [ ] Make a first commit so CI and GoReleaser have history to work from.
+- [x] Make a first commit so CI and GoReleaser have history to work from.
 - [ ] Update `project-overview.md` to cover `pkg/profiles`, the `footprint user` command, and the `breach` method.
 - [ ] List all four methods (`register`, `login`, `password_reset`, `breach`) in the comment on `Result.Method`.
 - [x] Resolve the policy conflict. Scans are now passive by default: password-reset (notifying) checks run only with `--allow-notify` (`checker.Notifies`, gated in the CLI). Still to do: reconcile the wording in `project-overview.md` step 5 and `AGENTS.md`.
@@ -68,6 +68,7 @@ Follow-ups worth doing next:
 
 - [ ] Capture a per-result SHA-256 of the raw HTTP response at the `httpx` layer (the hash reveals nothing, but plumbing it to `Result` without retaining bodies needs care; keeps the no-stolen-values boundary).
 - [ ] A real Maltego transform server (local HTTP), beyond the import CSV.
-- [ ] `footprint keygen` / `--sign-key` so the audit key can be managed or kept off the case directory (e.g. OS keychain).
+- [x] Audit key kept off the case directory (`FOOTPRINT_SIGN_KEY` or the user config dir, `footprint keygen`); `verify` trusts only `--pubkey` / the local public key, never the key inside the ledger; `--head` catches a truncated ledger.
+- [ ] Keep the audit signing key in the OS keychain or a hardware token instead of a file.
 - [ ] Wire `--proxy`, `--case-id`, and `--authority` into the `lookup` network calls' own client, and into the future MCP server.
 - [ ] CI: `go test -race`, `go vet`, `govulncheck`, and `gofmt` gate; GoReleaser with SBOM + cosign.

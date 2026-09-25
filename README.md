@@ -2,11 +2,25 @@
 
 [![ci](https://github.com/idrewlong/footprint/actions/workflows/ci.yml/badge.svg)](https://github.com/idrewlong/footprint/actions/workflows/ci.yml)
 
-Find accounts registered to an email address, and public profiles for a username. `footprint scan email` checks that address. `footprint scan username` checks public profiles. Pass both arguments to run the two together. An email scan includes breach names from XposedOrNot, LeakCheck, and Have I Been Pwned when `HIBP_API_KEY` is set. Breach checks list names and do not return passwords or other stolen values. The tool does not log in or submit a password. A password-reset check may email the address being checked when that site's response shows whether the account exists.
+Find accounts registered to an email address, and public profiles for a username. `footprint scan email` checks that address. `footprint scan username` checks public profiles. Pass both arguments to run the two together. An email scan includes breach names from XposedOrNot, LeakCheck, and Have I Been Pwned when `HIBP_API_KEY` is set. Breach checks list names and do not return passwords or other stolen values. The tool does not log in or submit a password. `footprint sites` lists every check, with its category and method.
+
+## Limitations
+
+A result is what one public signal said. `not_found` on a site is not proof that no account exists, and the site list is not exhaustive.
+
+- Checks run on your machine. The email is sent only to the site being checked. There is no hosted lookup and no telemetry.
+- The tool does not log in, submit a password, or create an account. A breach hit is a list of breach names. Passwords, hashes, and other stolen values are not requested or shown.
+- Password-reset checks can email the address. They run only when you pass `--allow-notify`. No password-reset checks ship yet, so today the flag changes nothing.
+- Statuses are `found`, `not_found`, `rate_limited`, and `error`. A timeout, a block page, or a response that does not say whether the account exists is `rate_limited` or `error`. It is never reported as `not_found`.
+- Have I Been Pwned runs only when `HIBP_API_KEY` is set. Without it, that one row is an error and the rest of the scan still runs. XposedOrNot and LeakCheck do not need a key.
+- `lookup ip` covers IPv4 and IPv6. Reverse DNS, ASN, RDAP, and the published range lists need no extra file. A city requires a GeoLite2 City database you download; footprint does not fetch it. The city is the network's location, not a person or a street address. Private and documentation addresses are not sent to Team Cymru or RDAP.
+- `--proxy` applies to `scan`, `user`, `probe`, and the MCP server. `lookup` does not take it, so a domain, IP, or organization lookup leaves from your own address.
+- `lookup entity` compares the name with the primary names in an OFAC SDN CSV you supply. Case and punctuation are ignored, so `APPLE, INC.` matches `Apple Inc.` Extra words do not: `Apple` does not match `Apple Inc.` Alias and address files are not read. An email address or an IP is rejected. Without `--sdn`, the OFAC row is an error, not a clear miss.
+- A published range list that could not be loaded is named. That address is not reported as absent from a list the tool did not read.
 
 ## Install
 
-Clone the repo and build it. You need Go (the version in `go.mod`); there are no other dependencies.
+Clone the repo and build it. Building needs Go (the version in `go.mod`) and nothing else. A scan, a username check, and an IP lookup without a city need no API key and no extra file.
 
 ```bash
 git clone https://github.com/idrewlong/footprint.git
@@ -51,11 +65,19 @@ footprint scan username octocat
 footprint scan email me@example.com username octocat
 footprint sites
 footprint sites --category dev
+footprint probe github test@gmail.com
+footprint lookup domain example.com
+footprint lookup ip 8.8.8.8
+footprint lookup ip "2600:1700:aded:6010:40a6:6ab0:9078:22ec"
 ```
+
+The word after `lookup` is the kind: `domain`, `ip`, or `entity`. `footprint lookup 8.8.8.8` is rejected. Quote an IPv6 address so the shell keeps it as one argument.
 
 The terminal lists found accounts. Each hit shows the method and the sentence for the signal that check used. Each breach name is on its own line. The summary still counts found, not found, rate limited, and error, so a partial run is not reported as complete. `--json` includes every status. `--md` writes a one-page case note: a bottom line, findings strongest first, coverage, and actions. `--only-found` drops non-hits from the JSON export. The case note still lists rate-limited and error rows as unchecked.
 
 `footprint scan username` checks public profile URLs. A hit includes the profile link. It does not collect a location, email address, or company. `footprint user` is the same check. If an email scan finds a public profile URL with a single path segment, stderr prints a suggested `footprint scan username` command. The tool does not run that scan.
+
+`footprint probe <site> <email>` runs that one check through the same client a scan uses and prints the raw status, headers, and body. A password-reset site still needs `--allow-notify`.
 
 A 429 or a known block page is `rate_limited`. A response that does not clearly say whether the address is registered is `error`. Neither is reported as `not_found`.
 
@@ -75,17 +97,22 @@ A 429 or a known block page is `rate_limited`. A response that does not clearly 
 footprint lookup domain ada@example.com
 footprint lookup domain example.com --certs
 footprint lookup ip 8.8.8.8
-footprint lookup ip 8.8.8.8 --geoip GeoLite2-City.mmdb
-footprint lookup entity "Apple Inc." --sdn sdn.csv
+footprint lookup ip "2600:1700::1"
+footprint lookup ip 8.8.8.8 --geoip ~/GeoLite2-City.mmdb
+footprint lookup entity "Apple Inc." --sdn ~/SDN.CSV
 ```
+
+`~/GeoLite2-City.mmdb` and `~/SDN.CSV` are paths you choose after downloading those files. They are not in this repository. Passing a path that does not exist does not search for a copy elsewhere.
 
 `lookup domain` checks MX, SPF, DMARC, and a local disposable-domain list. If you pass an email, DNS sees only the part after `@`. `--certs` also asks crt.sh how many certificates name that domain. Without the flag, crt.sh is not contacted.
 
-`lookup ip` prints a summary panel for the address: hostname and whether it resolves back to the address, ASN and AS name (IPv4 and IPv6), announced prefix, RDAP network and organization, and, when you pass a MaxMind GeoLite2 City database with `--geoip`, city, region, postal code, country, time zone, and coordinates with the database's accuracy radius. Coordinates are shown only with that radius. The panel also flags addresses in published range lists: AWS, Google Cloud, Azure, Oracle Cloud, DigitalOcean, Cloudflare, Fastly, the Tor exit list, and the community X4BNet VPN list. Whole lists are downloaded to your cache directory and matched locally, so the address is never sent to them. Lists refresh daily (Tor hourly); `--no-update` uses the cached copies only. A list that could not be loaded is named, and a miss is not reported as complete. The same fields are under `ip` in `--json`. The location is the network's, not a person's or a street address. The tool does not download the database. Private and documentation addresses are not sent to Team Cymru or RDAP. A missing database is an error, not a guessed city.
+`lookup ip` prints a summary panel for the address: hostname and whether it resolves back to the address, ASN and AS name (IPv4 and IPv6), announced prefix, RDAP network and organization, and, when you pass a MaxMind GeoLite2 City database with `--geoip`, city, region, postal code, country, time zone, and coordinates with the database's accuracy radius. Coordinates are shown only with that radius. The panel also flags addresses in published range lists: AWS, Google Cloud, Azure, Oracle Cloud, DigitalOcean, Cloudflare, Fastly, the Tor exit list, and the community X4BNet VPN list. Whole lists are downloaded to your cache directory and matched locally, so the address is never sent to them. Lists refresh daily (Tor hourly); `--no-update` uses the cached copies only. A list that could not be loaded is named, and a miss is not reported as complete. The same fields are under `ip` in `--json`. The location is the network's, not a person's or a street address. Private and documentation addresses are not sent to Team Cymru or RDAP.
 
-`lookup entity` matches the name exactly against a local OFAC SDN CSV (`--sdn`) and the SEC company-tickers list. An email address or an IP is rejected. A missing or unreadable SDN file is an error on stderr, not a clear miss. `Apple` does not match `Apple Inc.`
+The GeoIP database is a file you download. Create a MaxMind account at [maxmind.com/en/geolite2/signup](https://www.maxmind.com/en/geolite2/signup), download **GeoLite2 City** in MMDB format (GeoIP2 Binary), and pass that `.mmdb` file to `--geoip`. Leave the flag off to run the lookup without a city: the geoip row is then an error (`geoip database not configured`) and the ASN and RDAP rows still run. A path that does not open stops the command before any lookup.
 
-Each lookup accepts `--json`, `--md`, `--timeout` (default 10s), `--save`, and `--case-dir`.
+`lookup entity` matches the name against a local OFAC SDN CSV (`--sdn`) and the SEC company-tickers list, which is fetched from sec.gov. Download the primary-names file, `SDN.CSV`, from [OFAC's Sanctions List Service](https://ofac.treasury.gov/sanctions-list-service). The tool reads that file only. It does not load `ALT.CSV` (aliases) or `ADD.CSV` (addresses). An email address or an IP is rejected. Without `--sdn`, the OFAC row is an error (`sanctions list not configured`) and the SEC check still runs. A path that does not open is named on stderr and the OFAC row is an error; it is not a clear miss. `Apple` does not match `Apple Inc.`
+
+Each lookup accepts `--json`, `--md`, `--timeout` (default 10s), `--save`, `--case-dir`, `--case-id`, and `--authority`. `--save` requires `--case-id` and `--authority`, and a lookup without them is refused before anything is sent.
 
 ### Case files
 
@@ -151,6 +178,21 @@ Policy is set when the server starts, not by the assistant: `--allow-notify` (ch
 claude mcp add footprint -- footprint-mcp --proxy socks5h://127.0.0.1:9050 --save --case-id C-2026-001 --authority "warrant 24-1234"
 ```
 
+## Environment
+
+A scan, a username check, `probe`, and `lookup domain` or `lookup ip` without `--geoip` need none of these.
+
+| Variable | Effect |
+|---|---|
+| `HIBP_API_KEY` | Have I Been Pwned API key, from [haveibeenpwned.com/API/Key](https://haveibeenpwned.com/API/Key). Unset, the hibp row is an error (`hibp api key required`) and every other check still runs. |
+| `FOOTPRINT_OPERATOR` | Name stored with `--save`. If unset, `USER`, then `LOGNAME`. |
+| `FOOTPRINT_SIGN_KEY` | Path to the audit signing key. If unset, the key lives in the user config directory. `footprint keygen` creates it and prints the path and fingerprint. |
+| `NO_COLOR` | Set to any value to turn off color when stdout is a terminal. |
+
+GeoIP and the SDN list are files you pass with `--geoip` and `--sdn`, not environment variables. See the lookup section for where to download them.
+
+The manually triggered live job also reads `FOOTPRINT_LIVE_CANARY_EMAIL`, `FOOTPRINT_LIVE_CANARY_SITES`, and `FOOTPRINT_LIVE_ALLOW_NOTIFY=1` (password-reset checks). Those are for that job, not for a local scan. See Development.
+
 ## Development
 
 ```bash
@@ -162,7 +204,17 @@ CI runs gofmt, `go mod tidy`, `go vet`, `go test -race`, `govulncheck`, and `gor
 
 ## Layout
 
-Site checks live in `pkg/sites/`, one file per site. The CLI (`cmd/footprint`) and the MCP server (`cmd/footprint-mcp`) call `pkg/checker` and render results with `pkg/report`. Case files, the audit ledger, and `verify` live in `pkg/casefile`; the pivot graph and its exporters live in `pkg/graph`. Adding a site is described in `AGENTS.md`.
+Site checks live in `pkg/sites/`, one file per site. The CLI (`cmd/footprint`) and the MCP server (`cmd/footprint-mcp`) call `pkg/checker` and render results with `pkg/report`. Case files, the audit ledger, and `verify` live in `pkg/casefile`; the pivot graph and its exporters live in `pkg/graph`.
+
+### Adding a site
+
+1. Add `pkg/sites/<name>.go` implementing `checker.Site`, registered in `init`. Write the check from the site's own public behavior; do not copy another tool's modules.
+2. Record `testdata/<name>/found.http`, `not_found.http`, and `rate_limited.http`. A fixture holds one or more raw HTTP responses separated by a line containing `---`, one per request the check makes.
+3. Set the delete and security URLs when the site has those pages.
+4. Run `go test ./pkg/sites/ -run <Name>`. Fixture tests never touch the network.
+5. Run `footprint probe <name> <email>` to see what the live site returns through the real client, and confirm a random address comes back `not_found`, not `found` or `error`.
+
+A check that cannot tell whether the account exists returns `rate_limited` or `error`, never `not_found`. Do not add a check that needs a CAPTCHA, logs in, or creates an account.
 
 ## License
 

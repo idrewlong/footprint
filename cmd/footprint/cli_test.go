@@ -937,3 +937,19 @@ func TestScanBatchEmailsJSON(t *testing.T) {
 		t.Fatalf("stderr did not flag the invalid line:\n%s", stderr.String())
 	}
 }
+
+func TestLookupSaveNeedsCaseBeforeLookup(t *testing.T) {
+	for _, args := range [][]string{
+		{"lookup", "domain", "example.com", "--save"},
+		{"lookup", "ip", "8.8.8.8", "--save", "--case-id", "C-1"},
+		{"lookup", "entity", "Acme", "--save", "--authority", "warrant"},
+	} {
+		var stdout, stderr bytes.Buffer
+		if code := execute(args, &stdout, &stderr); code != 2 {
+			t.Fatalf("%v: code %d", args, code)
+		}
+		if !strings.Contains(stderr.String(), "--save requires --case-id and --authority") || stdout.Len() != 0 {
+			t.Fatalf("%v: stdout %q stderr %q", args, stdout.String(), stderr.String())
+		}
+	}
+}

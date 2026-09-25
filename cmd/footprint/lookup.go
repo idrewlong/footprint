@@ -199,6 +199,11 @@ func runLookupDomain(args []string, stdout, stderr io.Writer, deps lookupDeps) i
 		fmt.Fprintln(stderr, "footprint: --timeout must be greater than 0")
 		return 2
 	}
+	// Refuse before any lookup leaves the machine, as scan does.
+	if save && (strings.TrimSpace(caseID) == "" || strings.TrimSpace(authority) == "") {
+		fmt.Fprintln(stderr, "footprint: --save requires --case-id and --authority")
+		return 2
+	}
 	if len(positionals) != 1 {
 		fmt.Fprint(stderr, usage)
 		return 2
@@ -294,6 +299,11 @@ func runLookupIP(args []string, stdout, stderr io.Writer, deps lookupDeps) int {
 	}
 	if timeout <= 0 {
 		fmt.Fprintln(stderr, "footprint: --timeout must be greater than 0")
+		return 2
+	}
+	// Refuse before any lookup leaves the machine, as scan does.
+	if save && (strings.TrimSpace(caseID) == "" || strings.TrimSpace(authority) == "") {
+		fmt.Fprintln(stderr, "footprint: --save requires --case-id and --authority")
 		return 2
 	}
 	if len(positionals) != 1 {
@@ -400,6 +410,11 @@ func runLookupEntity(args []string, stdout, stderr io.Writer, deps lookupDeps) i
 	}
 	if timeout <= 0 {
 		fmt.Fprintln(stderr, "footprint: --timeout must be greater than 0")
+		return 2
+	}
+	// Refuse before any lookup leaves the machine, as scan does.
+	if save && (strings.TrimSpace(caseID) == "" || strings.TrimSpace(authority) == "") {
+		fmt.Fprintln(stderr, "footprint: --save requires --case-id and --authority")
 		return 2
 	}
 	if len(positionals) != 1 {

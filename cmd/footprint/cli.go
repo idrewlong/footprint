@@ -39,9 +39,10 @@ Usage:
   footprint scan email <email> username <username> [flags]
   footprint user <username> [flags]
   footprint sites [flags]
-  footprint lookup domain <domain-or-email> [--certs] [--timeout 10s] [--json|--md] [--save] [--case-dir path]
-  footprint lookup ip <ip> [--geoip path] [--no-update] [--timeout 10s] [--json|--md] [--save] [--case-dir path]
-  footprint lookup entity <name> --sdn path [--timeout 10s] [--json|--md] [--save] [--case-dir path]
+  footprint probe <site> <email> [--timeout 10s] [--proxy url] [--allow-notify]
+  footprint lookup domain <domain-or-email> [--certs] [--timeout 10s] [--json|--md] [--save --case-id id --authority text] [--case-dir path]
+  footprint lookup ip <ip> [--geoip path] [--no-update] [--timeout 10s] [--json|--md] [--save --case-id id --authority text] [--case-dir path]
+  footprint lookup entity <name> --sdn path [--timeout 10s] [--json|--md] [--save --case-id id --authority text] [--case-dir path]
   footprint diff <old.json> <new.json>
   footprint note <report.json>... [--json|--md]
   footprint verify [case-dir] [--case-dir path] [--pubkey file] [--head hash]
@@ -78,6 +79,10 @@ Sites flags:
   --category name     list one category
   --json              write the site list as JSON
 
+Probe runs one site through the same client a scan uses and prints the
+raw status, headers, and body. Use it while writing a check. A password-reset
+site can email the address, so it runs only with --allow-notify.
+
 Examples:
   footprint scan email me@example.com
   footprint scan username octocat
@@ -86,6 +91,7 @@ Examples:
   footprint user octocat
   footprint sites
   footprint sites --category dev
+  footprint probe github test@gmail.com
   footprint lookup domain ada@example.com
   footprint lookup ip 8.8.8.8
   footprint lookup entity "Apple Inc." --sdn sdn.csv
@@ -133,6 +139,8 @@ func runCommand(args []string, stdout, stderr io.Writer, catalog, profilesCatalo
 		return runUser(args[1:], stdout, stderr, profiles.Select)
 	case "sites":
 		return runSites(args[1:], stdout, stderr, catalog)
+	case "probe":
+		return runProbe(args[1:], stdout, stderr)
 	case "lookup":
 		return runLookup(args[1:], stdout, stderr, liveLookupDeps())
 	case "diff":

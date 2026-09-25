@@ -44,3 +44,7 @@ go.work.sum
 # Local agent scratch and linked worktrees
 .superpowers/
 .worktrees/
+
+# Local agent instructions and design notes
+/AGENTS.md
+/docs/
